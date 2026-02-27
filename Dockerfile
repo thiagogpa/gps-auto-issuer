@@ -19,4 +19,4 @@ RUN npm install
 COPY . .
 
 # Run the script when the container starts
-CMD ["node", "emit_gps.js"]
+CMD ["node", "src/index.js"]
