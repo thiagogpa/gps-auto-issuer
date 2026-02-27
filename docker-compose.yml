@@ -1,0 +1,9 @@
+services:
+  gps-emulator:
+    build: .
+    image: gps-emulator
+    env_file:
+      - .env
+    volumes:
+      - ./pdf:/app/pdf
+    restart: "no"

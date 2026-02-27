@@ -1,0 +1,21 @@
+{
+  "name": "gps",
+  "version": "1.0.0",
+  "description": "Automated GPS (Guia da Previdência Social) emission from the RFB website",
+  "main": "emit_gps.js",
+  "scripts": {
+    "start": "node emit_gps.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "puppeteer": "^24.37.5",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}
