@@ -3,6 +3,14 @@ const path = require('path');
 const { delay } = require('../helpers');
 
 /**
+ * Get today's date as YYYY-MM-DD string.
+ */
+function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Page 5: Extract summary data from the boleto page and save as JSON.
  *
  * @returns {Promise<object>} The extracted summary data
@@ -43,7 +51,7 @@ async function navigatePage5(page, config) {
     });
 
     const downloadPath = path.join(process.cwd(), 'pdf');
-    const jsonOutPath = path.join(downloadPath, 'boleto_summary.json');
+    const jsonOutPath = path.join(downloadPath, `boleto_summary_${todayStr()}.json`);
     fs.writeFileSync(jsonOutPath, JSON.stringify(summaryData, null, 2));
     console.log('Saved JSON summary to', jsonOutPath, summaryData);
 

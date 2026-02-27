@@ -4,6 +4,14 @@ const { delay, extractSiteKey, saveDebug } = require('../helpers');
 const { requestCapsolverToken, injectCaptchaToken } = require('../captcha');
 
 /**
+ * Get today's date as YYYY-MM-DD string.
+ */
+function todayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Page 4: Select checkbox, solve Page 4 CAPTCHA, click "Emitir GPS",
  * and capture the boleto PDF from the popup window.
  *
@@ -203,7 +211,7 @@ async function navigatePage4(page, browser, config) {
         await delay(3000, 5000);
 
         const blobUrl = boletoPg.url();
-        pdfPath = path.join(downloadPath, 'gps_emitted.pdf');
+        pdfPath = path.join(downloadPath, `gps_${todayStr()}.pdf`);
 
         const pdfBase64 = await boletoPg.evaluate(async (url) => {
             const res = await fetch(url);
