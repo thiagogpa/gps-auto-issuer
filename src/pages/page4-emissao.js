@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { delay, extractSiteKey, saveDebug } = require('../helpers');
 const { requestCapsolverToken, injectCaptchaToken } = require('../captcha');
+const logger = require('../logger');
 
 /**
  * Get today's date as YYYY-MM-DD string.
@@ -18,10 +19,10 @@ function todayStr() {
  * @returns {Promise<string|null>} Path to saved PDF, or null on failure
  */
 async function navigatePage4(page, browser, config) {
-    const downloadPath = path.join(process.cwd(), 'pdf');
+    const downloadPath = path.join(process.cwd(), 'output');
     if (!fs.existsSync(downloadPath)) {
         fs.mkdirSync(downloadPath, { recursive: true });
-        console.log(`Created PDF directory at: ${downloadPath}`);
+        logger.debug(`Created output directory at: ${downloadPath}`);
     }
 
     // Configure download behavior
@@ -40,9 +41,9 @@ async function navigatePage4(page, browser, config) {
                     behavior: 'allow',
                     downloadPath: downloadPath
                 });
-                console.log('Configured download behavior for new tab.');
+                logger.debug('Configured download behavior for new tab.');
             } catch (e) {
-                console.log('Error configuring new tab CDP session:', e.message);
+                logger.warn('Error configuring new tab CDP session: ' + e.message);
             }
         }
     });
@@ -52,24 +53,24 @@ async function navigatePage4(page, browser, config) {
         const contentType = response.headers()['content-type'] || '';
         const contentDisposition = response.headers()['content-disposition'] || '';
         if (contentType.includes('application/pdf') || (contentDisposition.includes('attachment') && contentDisposition.includes('.pdf'))) {
-            console.log('Detected PDF download response:', response.url());
+            logger.debug('Detected PDF download response: ' + response.url());
             try {
                 const buffer = await response.buffer();
                 const pdfOutPath = path.join(downloadPath, `gps_emitted_intercept_${Date.now()}.pdf`);
                 fs.writeFileSync(pdfOutPath, buffer);
-                console.log('Saved intercepted PDF to', pdfOutPath);
+                logger.info('Saved intercepted PDF to ' + pdfOutPath);
             } catch (e) {
-                console.log('Error saving intercepted PDF:', e.message);
+                logger.warn('Error saving intercepted PDF: ' + e.message);
             }
         }
     });
 
-    console.log('Configured Puppeteer headless download settings.');
+    logger.debug('Configured Puppeteer headless download settings.');
 
     await saveDebug(page, 'page4_dump.html', 'html', config.debug);
 
     // Select "check all" checkbox
-    console.log('Attempting to select the "check all" checkbox in the table header...');
+    logger.debug('Attempting to select the "check all" checkbox in the table header...');
     await page.evaluate(() => {
         const cbs = Array.from(document.querySelectorAll('br-checkbox'));
         for (const cb of cbs) {
@@ -90,11 +91,11 @@ async function navigatePage4(page, browser, config) {
             }
         }
     });
-    console.log('Fired click and change events on br-checkbox components.');
+    logger.debug('Fired click and change events on br-checkbox components.');
     await delay(1000, 2000);
 
     // Find "Emitir GPS" button
-    console.log('Waiting for "Emitir GPS" button to be enabled...');
+    logger.debug('Waiting for "Emitir GPS" button to be enabled...');
     const buttons = await page.$$('br-button');
     let emitirBtn = null;
     for (const btn of buttons) {
@@ -106,7 +107,7 @@ async function navigatePage4(page, browser, config) {
     }
 
     // Set up popup listener BEFORE clicking
-    console.log('Setting up popup listener for GPS boleto window (before clicking Emitir GPS)...');
+    logger.debug('Setting up popup listener for GPS boleto window (before clicking Emitir GPS)...');
     const boletoPdfPromise = new Promise(resolve => {
         browser.once('targetcreated', async target => {
             if (target.type() === 'page') {
@@ -116,37 +117,37 @@ async function navigatePage4(page, browser, config) {
     });
 
     if (!emitirBtn) {
-        console.log('Could not find "Emitir GPS" button.');
+        logger.error('Could not find "Emitir GPS" button.');
         return null;
     }
 
     // Solve Page 4 CAPTCHA
     if (config.capsolverKey) {
-        console.log('\n--- [PAGE 4 CAPTCHA] PAID TOKEN FALLBACK (CapSolver) ---');
+        logger.info('--- [PAGE 4 CAPTCHA] PAID TOKEN FALLBACK (CapSolver) ---');
         try {
             const currentUrl = await page.url();
 
             // Dynamically extract site key, fallback to hardcoded
             let siteKeyP4 = await extractSiteKey(page, 5000);
             if (!siteKeyP4) siteKeyP4 = '6Le7YegkAAAAAFNIhuu_eBRaDmxLY6Qf_A8BrtKX';
-            console.log(`Using site key for Page 4: ${siteKeyP4}`);
+            logger.debug(`Using site key for Page 4: ${siteKeyP4}`);
 
             const capsolverToken = await requestCapsolverToken(config, siteKeyP4, currentUrl);
-            console.log(`Token acquired. Length: ${capsolverToken.length}. Ready to inject.`);
+            logger.debug(`Token acquired. Length: ${capsolverToken.length}. Ready to inject.`);
 
             // First click to trigger Angular flow
-            console.log('Clicking "Emitir GPS" button to trigger Angular flow and CAPTCHA challenge...');
+            logger.debug('Clicking "Emitir GPS" button to trigger Angular flow and CAPTCHA challenge...');
             for (let i = 0; i < 20; i++) {
                 const isDisabled = await page.evaluate(el => el.hasAttribute('disabled') || el.disabled, emitirBtn);
                 if (!isDisabled) {
                     await emitirBtn.click();
-                    console.log('Clicked "Emitir GPS" button natively.');
+                    logger.debug('Clicked "Emitir GPS" button natively.');
                     break;
                 }
                 await delay(500, 500);
             }
 
-            console.log('Waiting for visual CAPTCHA iframe to initialize...');
+            logger.debug('Waiting for visual CAPTCHA iframe to initialize...');
             await delay(1500, 2500);
 
             // Inject token
@@ -160,12 +161,12 @@ async function navigatePage4(page, browser, config) {
                 }
             }, capsolverToken);
 
-            console.log('SUCCESS: Page 4 CAPTCHA token injected!');
-            console.log('Giving Angular 2s to detect token before second click...');
+            logger.info('SUCCESS: Page 4 CAPTCHA token injected!');
+            logger.debug('Giving Angular 2s to detect token before second click...');
             await delay(2000, 2500);
 
             // Second click via coordinates
-            console.log('Clicking "Emitir GPS" via coordinate-based mouse click...');
+            logger.debug('Clicking "Emitir GPS" via coordinate-based mouse click...');
             const btnCoords = await page.evaluate(() => {
                 const buttons = Array.from(document.querySelectorAll('br-button'));
                 const btn = buttons.find(b => b.textContent && b.textContent.includes('Emitir GPS'));
@@ -178,20 +179,20 @@ async function navigatePage4(page, browser, config) {
 
             if (btnCoords && btnCoords.found) {
                 await page.mouse.click(btnCoords.x, btnCoords.y);
-                console.log(`Clicked "Emitir GPS" via mouse at (${btnCoords.x.toFixed(0)}, ${btnCoords.y.toFixed(0)})`);
+                logger.debug(`Clicked "Emitir GPS" via mouse at (${btnCoords.x.toFixed(0)}, ${btnCoords.y.toFixed(0)})`);
             } else {
-                console.log('Could not locate "Emitir GPS" button for coordinate click.');
+                logger.warn('Could not locate "Emitir GPS" button for coordinate click.');
             }
         } catch (err) {
-            console.log(`FAIL: Page 4 CapSolver failed. Reason: ${err.message}`);
+            logger.error(`FAIL: Page 4 CapSolver failed. Reason: ${err.message}`);
         }
     } else {
-        console.log('No CapSolver key. Clicking "Emitir GPS" natively as fallback...');
+        logger.warn('No CapSolver key. Clicking "Emitir GPS" natively as fallback...');
         for (let i = 0; i < 20; i++) {
             const isDisabled = await page.evaluate(el => el.hasAttribute('disabled') || el.disabled, emitirBtn);
             if (!isDisabled) {
                 await emitirBtn.click();
-                console.log('Clicked "Emitir GPS" button natively.');
+                logger.debug('Clicked "Emitir GPS" button natively.');
                 break;
             }
             await delay(500, 500);
@@ -199,7 +200,7 @@ async function navigatePage4(page, browser, config) {
     }
 
     // Capture the boleto popup and download the PDF
-    console.log('Waiting up to 30s for the GPS boleto popup to open...');
+    logger.info('Waiting up to 30s for the GPS boleto popup to open...');
     let pdfPath = null;
     try {
         const boletoPg = await Promise.race([
@@ -207,7 +208,7 @@ async function navigatePage4(page, browser, config) {
             new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: GPS boleto popup did not open')), 30000))
         ]);
 
-        console.log('Boleto popup captured! URL:', boletoPg.url());
+        logger.info('Boleto popup captured! URL: ' + boletoPg.url());
         await delay(3000, 5000);
 
         const blobUrl = boletoPg.url();
@@ -223,12 +224,12 @@ async function navigatePage4(page, browser, config) {
         }, blobUrl);
 
         fs.writeFileSync(pdfPath, Buffer.from(pdfBase64, 'base64'));
-        console.log(`Saved GPS boleto PDF to ${pdfPath} successfully!`);
+        logger.info(`Saved GPS boleto PDF to ${pdfPath} successfully!`);
 
         await saveDebug(boletoPg, 'page_boleto_popup.png', 'screenshot', config.debug);
         await boletoPg.close();
     } catch (e) {
-        console.log(`Could not capture boleto popup: ${e.message}`);
+        logger.warn(`Could not capture boleto popup: ${e.message}`);
         await saveDebug(page, 'page5_fallback.png', 'screenshot', config.debug);
     }
 

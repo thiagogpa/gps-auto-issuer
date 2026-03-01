@@ -1,5 +1,16 @@
 const axios = require('axios');
 const { delay } = require('./helpers');
+const logger = require('./logger');
+
+/**
+ * Custom error thrown when all CAPTCHA bypass tiers are exhausted.
+ */
+class CaptchaFailedError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'CaptchaFailedError';
+    }
+}
 
 /**
  * 3-Tier Waterfall CAPTCHA Solver.
@@ -19,50 +30,50 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
     // ==========================================
     // TIER 1: STEALTH EVASION
     // ==========================================
-    console.log('\n--- [TIER 1] STEALTH EVASION ---');
+    logger.info('--- [TIER 1] STEALTH EVASION ---');
     try {
         const primaryFrameEl = await page.$('iframe[title="reCAPTCHA"]');
         const primaryFrame = await primaryFrameEl.contentFrame();
 
         if (primaryFrame) {
             await primaryFrame.waitForSelector('.recaptcha-checkbox-border', { timeout: 10000 });
-            console.log('Clicking the "I am not a robot" checkbox...');
+            logger.debug('Clicking the "I am not a robot" checkbox...');
             await delay(500, 1500);
             await primaryFrame.click('.recaptcha-checkbox-border');
 
-            console.log('Waiting to see if reCAPTCHA auto-solves via Stealth...');
+            logger.debug('Waiting to see if reCAPTCHA auto-solves via Stealth...');
             try {
                 await primaryFrame.waitForFunction(() => {
                     const cb = document.querySelector('.recaptcha-checkbox');
                     return cb && cb.getAttribute('aria-checked') === 'true';
                 }, { timeout: 6000 });
                 solved = true;
-                console.log('SUCCESS: Tier 1 (Stealth) bypassed the CAPTCHA automatically!');
+                logger.info('SUCCESS: Tier 1 (Stealth) bypassed the CAPTCHA automatically!');
             } catch {
-                console.log('FAIL: Tier 1 (Stealth) encountered a puzzle/challenge.');
+                logger.info('FAIL: Tier 1 (Stealth) encountered a puzzle/challenge.');
             }
         }
     } catch (err) {
-        console.log('Error during Tier 1:', err.message);
+        logger.warn('Error during Tier 1: ' + err.message);
     }
 
     // ==========================================
     // TIER 2: FREE AUDIO FALLBACK (Wit.ai)
     // ==========================================
     if (!solved && config.witAiToken) {
-        console.log('\n--- [TIER 2] FREE AUDIO FALLBACK (Wit.ai) ---');
+        logger.info('--- [TIER 2] FREE AUDIO FALLBACK (Wit.ai) ---');
         try {
             const challengeFrameEl = await page.waitForSelector('iframe[src*="bframe"]', { timeout: 10000 }).catch(() => null);
             if (challengeFrameEl) {
                 const challengeFrame = await challengeFrameEl.contentFrame();
 
                 await delay(1000, 2000);
-                console.log('Clicking the Audio Challenge button...');
+                logger.debug('Clicking the Audio Challenge button...');
                 await challengeFrame.waitForSelector('#recaptcha-audio-button', { timeout: 10000 });
                 await challengeFrame.click('#recaptcha-audio-button');
 
                 await delay(1500, 3000);
-                console.log('Waiting for audio challenge payload or IP Block text...');
+                logger.debug('Waiting for audio challenge payload or IP Block text...');
                 await challengeFrame.waitForFunction(() => {
                     const audio = document.querySelector('#audio-source');
                     const blockMsg = document.querySelector('.rc-doscaptcha-header-text');
@@ -75,12 +86,12 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
                 }
 
                 const audioSrc = await challengeFrame.evaluate(() => document.querySelector('#audio-source').src);
-                console.log('Audio URL verified. Downloading buffer...');
+                logger.debug('Audio URL verified. Downloading buffer...');
 
                 const audioResponse = await axios.get(audioSrc, { responseType: 'arraybuffer' });
                 const audioBuffer = Buffer.from(audioResponse.data, 'binary');
 
-                console.log(`Submitting audio to Wit.ai (${audioBuffer.length} bytes)...`);
+                logger.debug(`Submitting audio to Wit.ai (${audioBuffer.length} bytes)...`);
                 const witResponse = await axios.post(
                     'https://api.wit.ai/dictation?v=20230225',
                     audioBuffer,
@@ -104,10 +115,10 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
                 }
                 if (!transcribedText && witResponse.data.text) transcribedText = witResponse.data.text.trim();
 
-                console.log(`Transcription received: "${transcribedText}"`);
+                logger.debug(`Transcription received: "${transcribedText}"`);
                 if (!transcribedText) throw new Error('Transcription was empty.');
 
-                console.log('Typing transcription and verifying...');
+                logger.debug('Typing transcription and verifying...');
                 await delay(500, 1500);
                 await challengeFrame.type('#audio-response', transcribedText, { delay: 100 });
                 await delay(500, 1000);
@@ -121,32 +132,32 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
                 }, { timeout: 10000 });
 
                 solved = true;
-                console.log('SUCCESS: Tier 2 (Audio) bypassed the CAPTCHA!');
+                logger.info('SUCCESS: Tier 2 (Audio) bypassed the CAPTCHA!');
             } else {
-                console.log('Secondary challenge iframe not found. Skipping Tier 2.');
+                logger.warn('Secondary challenge iframe not found. Skipping Tier 2.');
             }
         } catch (err) {
-            console.log(`FAIL: Tier 2 (Audio) failed. Reason: ${err.message}`);
+            logger.info(`FAIL: Tier 2 (Audio) failed. Reason: ${err.message}`);
         }
     } else if (!solved && !config.witAiToken) {
-        console.log('\n--- [TIER 2] SKIPPED: WIT_AI_TOKEN not provided. ---');
+        logger.info('--- [TIER 2] SKIPPED: WIT_AI_TOKEN not provided. ---');
     }
 
     // ==========================================
     // TIER 3: PAID TOKEN FALLBACK (CapSolver)
     // ==========================================
     if (!solved && config.capsolverKey) {
-        console.log('\n--- [TIER 3] PAID TOKEN FALLBACK (CapSolver) ---');
+        logger.info('--- [TIER 3] PAID TOKEN FALLBACK (CapSolver) ---');
         try {
             if (!siteKey) throw new Error('Cannot proceed: SiteKey was not extracted.');
 
             const token = await requestCapsolverToken(config, siteKey, pageUrl);
-            console.log(`Token acquired (${token.substring(0, 30)}...). Injecting into DOM...`);
+            logger.debug(`Token acquired (${token.substring(0, 30)}...). Injecting into DOM...`);
 
             await injectCaptchaToken(page, token);
 
             solved = true;
-            console.log('SUCCESS: Tier 3 (CapSolver) injected the bypass token!');
+            logger.info('SUCCESS: Tier 3 (CapSolver) injected the bypass token!');
             await delay(3000, 4000);
 
             // Remove any leftover reCAPTCHA overlay containers
@@ -155,14 +166,13 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
             });
 
         } catch (err) {
-            console.log(`FAIL: Tier 3 (CapSolver) failed. Reason: ${err.message}`);
-            console.error('CRITICAL: All CAPTCHA bypass tiers exhausted. Automation cannot proceed.');
-            process.exit(1);
+            logger.info(`FAIL: Tier 3 (CapSolver) failed. Reason: ${err.message}`);
+            throw new CaptchaFailedError('All CAPTCHA bypass tiers exhausted. Automation cannot proceed.');
         }
     } else if (!solved) {
-        console.log('\n--- [MANUAL FALLBACK] ---');
-        console.log('CAPTCHA was not bypassed automatically.');
-        console.log('Waiting 90 seconds for manual solve...');
+        logger.warn('--- [MANUAL FALLBACK] ---');
+        logger.warn('CAPTCHA was not bypassed automatically.');
+        logger.warn('Waiting 90 seconds for manual solve...');
         await delay(90000, 90000);
         solved = true;
     }
@@ -182,7 +192,7 @@ async function requestCapsolverToken(config, siteKey, pageUrl) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            console.log(`Requesting reCAPTCHA v2 token from CapSolver (attempt ${attempt}/${maxRetries})...`);
+            logger.debug(`Requesting reCAPTCHA v2 token from CapSolver (attempt ${attempt}/${maxRetries})...`);
             const createTaskRes = await axios.post('https://api.capsolver.com/createTask', {
                 clientKey: config.capsolverKey,
                 task: {
@@ -197,7 +207,7 @@ async function requestCapsolverToken(config, siteKey, pageUrl) {
             }
 
             const taskId = createTaskRes.data.taskId;
-            console.log(`Task created. ID: ${taskId}. Polling for solution...`);
+            logger.debug(`Task created. ID: ${taskId}. Polling for solution...`);
 
             const pollLimit = config.capsolverPollLimit || 40;
             for (let i = 0; i < pollLimit; i++) {
@@ -216,11 +226,11 @@ async function requestCapsolverToken(config, siteKey, pageUrl) {
 
             throw new Error('Polling timed out.');
         } catch (retryErr) {
-            console.log(`CapSolver attempt ${attempt} failed: ${retryErr.message}`);
+            logger.warn(`CapSolver attempt ${attempt} failed: ${retryErr.message}`);
             if (attempt === maxRetries) {
                 throw new Error(`All ${maxRetries} CapSolver attempts failed.`);
             }
-            console.log('Retrying CapSolver...');
+            logger.debug('Retrying CapSolver...');
             await delay(2000, 3000);
         }
     }
@@ -284,4 +294,4 @@ async function injectCaptchaToken(page, token) {
     }, token);
 }
 
-module.exports = { solveCaptcha, requestCapsolverToken, injectCaptchaToken };
+module.exports = { solveCaptcha, requestCapsolverToken, injectCaptchaToken, CaptchaFailedError };

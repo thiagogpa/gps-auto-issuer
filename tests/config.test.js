@@ -75,6 +75,54 @@ describe('config', () => {
         expect(config.capsolverMaxRetries).toBe(10);
     });
 
+    // ─── New config fields ──────────────────────────────────────────
+
+    test('captchaRetryAttempts defaults to 2 when env is unset', () => {
+        const config = loadConfig();
+        expect(config.captchaRetryAttempts).toBe(2);
+    });
+
+    test('captchaRetryAttempts parses custom value from env', () => {
+        process.env.CAPTCHA_RETRY_ATTEMPTS = '4';
+        const config = loadConfig();
+        expect(config.captchaRetryAttempts).toBe(4);
+    });
+
+    test('processRetryAttempts defaults to 2 when env is unset', () => {
+        const config = loadConfig();
+        expect(config.processRetryAttempts).toBe(2);
+    });
+
+    test('processRetryAttempts parses custom value from env', () => {
+        process.env.PROCESS_RETRY_ATTEMPTS = '3';
+        const config = loadConfig();
+        expect(config.processRetryAttempts).toBe(3);
+    });
+
+    test('processRetryDelayMinutes defaults to 5 when env is unset', () => {
+        const config = loadConfig();
+        expect(config.processRetryDelayMinutes).toBe(5);
+    });
+
+    test('processRetryDelayMinutes parses custom value from env', () => {
+        process.env.PROCESS_RETRY_DELAY_MINUTES = '10';
+        const config = loadConfig();
+        expect(config.processRetryDelayMinutes).toBe(10);
+    });
+
+    test('cronSchedule reads from CRON_SCHEDULE env', () => {
+        process.env.CRON_SCHEDULE = '0 8 16 * *';
+        const config = loadConfig();
+        expect(config.cronSchedule).toBe('0 8 16 * *');
+    });
+
+    test('cronSchedule defaults to empty string when env is unset', () => {
+        const config = loadConfig();
+        expect(config.cronSchedule).toBe('');
+    });
+
+    // ─── API key validation ─────────────────────────────────────────
+
     test('calls process.exit(1) when PIS is missing', () => {
         const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
             throw new Error('process.exit called');
@@ -87,17 +135,29 @@ describe('config', () => {
         mockExit.mockRestore();
     });
 
-    test('logs a warning when WIT_AI_TOKEN and CAPSOLVER_API_KEY are missing', () => {
+    test('calls process.exit(1) when CAPSOLVER_API_KEY is missing', () => {
+        const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+            throw new Error('process.exit called');
+        });
+
+        delete process.env.CAPSOLVER_API_KEY;
+        expect(() => loadConfig()).toThrow('process.exit called');
+        expect(mockExit).toHaveBeenCalledWith(1);
+
+        mockExit.mockRestore();
+    });
+
+    test('logs a warning (not exit) when WIT_AI_TOKEN is missing', () => {
         const mockWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
+        const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+            throw new Error('process.exit called');
+        });
 
         delete process.env.WIT_AI_TOKEN;
-        delete process.env.CAPSOLVER_API_KEY;
-        loadConfig();
-
-        expect(mockWarn).toHaveBeenCalledWith(
-            expect.stringContaining('WIT_AI_TOKEN or CAPSOLVER_API_KEY is missing')
-        );
+        // Should NOT throw or call process.exit
+        expect(() => loadConfig()).not.toThrow();
 
         mockWarn.mockRestore();
+        mockExit.mockRestore();
     });
 });

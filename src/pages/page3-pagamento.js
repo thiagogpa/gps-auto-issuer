@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { delay, focusInputByLabel, clickBrButton, saveDebug } = require('../helpers');
+const logger = require('../logger');
 
 /**
  * Page 3: Fill payment details (date, código, competência, salário) and confirm.
@@ -15,18 +16,18 @@ async function navigatePage3(page, config) {
             );
         }, { timeout: 30000 });
     } catch {
-        console.log('Timeout waiting for Page 3 to render.');
+        logger.warn('Timeout waiting for Page 3 to render.');
     }
 
-    console.log('Page 3 loaded. Simulating human delay before filling payment details...');
+    logger.info('Page 3 loaded. Filling payment details...');
     await delay(2000, 4000);
 
     await saveDebug(page, 'page3_dump.html', 'html', config.debug);
 
-    console.log('Searching for "Data do Pagamento" and "Código de Pagamento"...');
+    logger.debug('Searching for "Data do Pagamento" and "Código de Pagamento"...');
 
     // 1. Fill Data do Pagamento — click calendar, select today
-    console.log('Opening "Data do Pagamento" calendar...');
+    logger.debug('Opening "Data do Pagamento" calendar...');
     await page.evaluate(() => {
         const labels = Array.from(document.querySelectorAll('label'));
         const dateLabel = labels.find(l => l.textContent.toLowerCase().includes('data do pagamento'));
@@ -41,10 +42,10 @@ async function navigatePage3(page, config) {
         }
     });
 
-    console.log('Waiting for calendar popup...');
+    logger.debug('Waiting for calendar popup...');
     await delay(1000, 2000);
 
-    console.log('Selecting "Today" from calendar...');
+    logger.debug('Selecting "Today" from calendar...');
     await page.evaluate(() => {
         const calendarBtns = Array.from(document.querySelectorAll('.flatpickr-day.today, button.today, .is-today, .today'));
         if (calendarBtns.length > 0) {
@@ -55,7 +56,7 @@ async function navigatePage3(page, config) {
             if (hojeBtn) hojeBtn.click();
         }
     });
-    console.log('Selected today as payment date.');
+    logger.debug('Selected today as payment date.');
     await delay(500, 1000);
 
     // 2. Select Código do Pagamento
@@ -77,7 +78,7 @@ async function navigatePage3(page, config) {
         }
     });
 
-    console.log('Opened Código dropdown. Waiting for items to render...');
+    logger.debug('Opened Código dropdown. Waiting for items to render...');
     await delay(1000, 2000);
 
     await page.evaluate((code) => {
@@ -109,28 +110,28 @@ async function navigatePage3(page, config) {
             }
         }
     }, config.codigoPagamento);
-    console.log(`Selected Código ${config.codigoPagamento}.`);
+    logger.debug(`Selected Código ${config.codigoPagamento}.`);
     await delay(1000, 2000);
 
     // 3. Fetch minimum wage and fill the modal
-    console.log('Fetching minimum wage...');
+    logger.info('Fetching minimum wage...');
     const bcbRes = await axios.get(config.minWageApiUrl);
     const minWageRaw = bcbRes.data[0].valor;
     const minWageNum = parseFloat(minWageRaw);
     const minWageInputString = (Math.round(minWageNum * 100)).toString();
-    console.log(`Minimum wage fetched: ${minWageRaw} -> formatted for input: ${minWageInputString}`);
+    logger.debug(`Minimum wage fetched: ${minWageRaw} -> formatted for input: ${minWageInputString}`);
 
     // Click "+ Adicionar"
-    console.log('Clicking "+ Adicionar"...');
+    logger.debug('Clicking "+ Adicionar"...');
     await clickBrButton(page, 'Adicionar');
 
-    console.log('Waiting for modal to appear...');
+    logger.debug('Waiting for modal to appear...');
     await delay(1500, 2500);
 
     // Competência (MM/YYYY)
     const today = new Date();
     const competenciaStr = `${String(today.getMonth() + 1).padStart(2, '0')}${today.getFullYear()}`;
-    console.log('Filling Competência...');
+    logger.debug('Filling Competência...');
     await focusInputByLabel(page, 'competência');
     await delay(500, 1000);
     await page.keyboard.type(competenciaStr, { delay: 100 });
@@ -138,7 +139,7 @@ async function navigatePage3(page, config) {
     await delay(500, 1000);
 
     // Salário
-    console.log('Filling Salário...');
+    logger.debug('Filling Salário...');
     await focusInputByLabel(page, 'salário');
     await delay(500, 1000);
     await page.keyboard.type(minWageInputString, { delay: 100 });
@@ -146,7 +147,7 @@ async function navigatePage3(page, config) {
     await delay(500, 1000);
 
     // Click Confirmar inside the modal
-    console.log('Clicking "Confirmar" on the modal...');
+    logger.debug('Clicking "Confirmar" on the modal...');
     await page.evaluate(() => {
         const modals = Array.from(document.querySelectorAll('br-modal'));
         const addModal = modals.find(m => m.getAttribute('title') === 'Adicionar Contribuição' && m.getAttribute('show') !== null);
@@ -171,16 +172,16 @@ async function navigatePage3(page, config) {
             }
         }
     });
-    console.log('Modal Confirmar clicked. Waiting for table to update...');
+    logger.debug('Modal Confirmar clicked. Waiting for table to update...');
     await delay(2000, 4000);
 
     await saveDebug(page, 'page3_filled.png', 'screenshot', config.debug);
 
     // Click final "Confirmar" on the page (not in modal)
-    console.log('Clicking final "Confirmar"...');
+    logger.debug('Clicking final "Confirmar"...');
     await clickBrButton(page, 'Confirmar', { primary: true, excludeModal: true });
 
-    console.log('Flow complete! Waiting for Page 4 to load...');
+    logger.info('Page 3 flow complete! Waiting for Page 4 to load...');
     await delay(3000, 6000);
 }
 

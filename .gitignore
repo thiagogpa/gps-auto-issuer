@@ -1,8 +1,9 @@
 node_modules/
 .env
 .DS_Store
-pdf/*
-!pdf/.gitkeep
+logs/
+output/*
+!output/.gitkeep
 *.png
 *.html
 !Dockerfile

@@ -1,3 +1,5 @@
+const logger = require('./logger');
+
 /**
  * Randomized delay to mimic human behavior.
  * @param {number} min - Minimum delay in ms
@@ -89,9 +91,9 @@ async function saveDebug(page, filename, type, debug) {
             const fs = require('fs');
             fs.writeFileSync(filename, await page.content());
         }
-        console.log(`[DEBUG] Saved ${filename}`);
+        logger.debug(`Saved ${filename}`);
     } catch (e) {
-        console.log(`[DEBUG] Could not save ${filename}: ${e.message}`);
+        logger.debug(`Could not save ${filename}: ${e.message}`);
     }
 }
 

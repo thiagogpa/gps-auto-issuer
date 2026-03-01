@@ -1,7 +1,7 @@
 jest.mock('axios');
 
 const axios = require('axios');
-const { sendDiscordNotification } = require('../src/notifications/discord');
+const { sendDiscordNotification, sendDiscordWarning } = require('../src/notifications/discord');
 
 const fullSummary = {
     nis: '123.45678.90-1',
@@ -11,6 +11,8 @@ const fullSummary = {
     total: 'R$ 264,40',
     barcode: '85820000002-6 64400286025-0 02600000000-0 00000000000-4',
 };
+
+// ─── sendDiscordNotification() ──────────────────────────────────────
 
 describe('sendDiscordNotification()', () => {
     beforeEach(() => {
@@ -77,6 +79,69 @@ describe('sendDiscordNotification()', () => {
 
         expect(mockError).toHaveBeenCalledWith(
             expect.stringContaining('Failed to send Discord notification'),
+            expect.any(String)
+        );
+
+        mockError.mockRestore();
+    });
+});
+
+// ─── sendDiscordWarning() ───────────────────────────────────────────
+
+describe('sendDiscordWarning()', () => {
+    beforeEach(() => {
+        axios.post.mockReset();
+    });
+
+    test('sends POST with red-colored warning embed', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+
+        await sendDiscordWarning(
+            'https://discord.com/api/webhooks/test',
+            'Test Warning',
+            'Something went wrong'
+        );
+
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        const [url, body] = axios.post.mock.calls[0];
+        expect(url).toBe('https://discord.com/api/webhooks/test');
+        expect(body.embeds).toHaveLength(1);
+
+        const embed = body.embeds[0];
+        expect(embed.title).toContain('Test Warning');
+        expect(embed.title).toContain('⚠️');
+        expect(embed.description).toBe('Something went wrong');
+        expect(embed.color).toBe(0xe74c3c); // red
+    });
+
+    test('includes timestamp and footer', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+
+        await sendDiscordWarning('https://discord.com/api/webhooks/test', 'Title', 'Desc');
+
+        const embed = axios.post.mock.calls[0][1].embeds[0];
+        expect(embed.timestamp).toBeDefined();
+        expect(embed.footer.text).toBe('GPS Automation');
+    });
+
+    test('skips sending when webhookUrl is falsy', async () => {
+        await sendDiscordWarning(undefined, 'Title', 'Desc');
+        await sendDiscordWarning(null, 'Title', 'Desc');
+        await sendDiscordWarning('', 'Title', 'Desc');
+
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    test('logs error but does not throw when Axios fails', async () => {
+        const mockError = jest.spyOn(console, 'error').mockImplementation(() => { });
+        axios.post.mockRejectedValue(new Error('Network error'));
+
+        await expect(
+            sendDiscordWarning('https://discord.com/api/webhooks/test', 'Title', 'Desc')
+        ).resolves.toBeUndefined();
+
+        expect(mockError).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to send Discord warning'),
             expect.any(String)
         );
 

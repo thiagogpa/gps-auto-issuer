@@ -1,4 +1,5 @@
 require('dotenv').config();
+const logger = require('./logger');
 
 const config = {
     // Target URL
@@ -29,16 +30,35 @@ const config = {
     // CapSolver retry config
     capsolverMaxRetries: parseInt(process.env.CAPSOLVER_MAX_RETRIES, 10) || 5,
     capsolverPollLimit: 40,
+
+    // Cron schedule (e.g. "0 8 16 * *" = 8:00 AM on the 16th monthly)
+    cronSchedule: process.env.CRON_SCHEDULE || '',
+
+    // CAPTCHA-level retry (immediate, no delay between retries)
+    captchaRetryAttempts: parseInt(process.env.CAPTCHA_RETRY_ATTEMPTS, 10) || 2,
+
+    // Process-level retry (full end-to-end retry when CAPTCHA fails entirely)
+    processRetryAttempts: parseInt(process.env.PROCESS_RETRY_ATTEMPTS, 10) || 2,
+    processRetryDelayMinutes: parseInt(process.env.PROCESS_RETRY_DELAY_MINUTES, 10) || 5,
 };
 
 // Validate required config
 if (!config.pis) {
-    console.error('ERROR: PIS is required. Set it in the .env file.');
+    logger.error('PIS is required. Set it in the .env file.');
     process.exit(1);
 }
 
-if (!config.witAiToken || !config.capsolverKey) {
-    console.warn('WARNING: WIT_AI_TOKEN or CAPSOLVER_API_KEY is missing. Waterfall might fail at later tiers.');
+// WIT_AI_TOKEN is optional — audio CAPTCHA tier will be skipped if not provided
+if (!config.witAiToken) {
+    logger.warn('WIT_AI_TOKEN not provided. Audio CAPTCHA tier (Tier 2) will be skipped.');
+}
+
+// CAPSOLVER_API_KEY is required
+if (!config.capsolverKey) {
+    logger.error('CAPSOLVER_API_KEY is required. Set it in the .env file.');
+    // Discord warning is sent from index.js before exit since config should not
+    // have a circular dependency on discord.js
+    process.exit(1);
 }
 
 module.exports = config;

@@ -1,9 +1,23 @@
 services:
-  gps-emulator:
+  gps-worker:
     build: .
     image: gps-emulator
     env_file:
       - .env
     volumes:
-      - ./pdf:/app/pdf
+      - ./output:/app/output
     restart: "no"
+    profiles:
+      - worker
+
+  gps-scheduler:
+    image: docker:cli
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/compose
+    env_file:
+      - .env
+    entrypoint: /bin/sh
+    command: >
+      -c "echo \"${CRON_SCHEDULE} cd /compose && docker compose run --rm gps-worker\" | crontab - && crond -f -l 2"
+    restart: unless-stopped

@@ -4,16 +4,7 @@ jest.mock('../src/helpers', () => ({
 }));
 
 const axios = require('axios');
-const { solveCaptcha, requestCapsolverToken, injectCaptchaToken } = require('../src/captcha');
-
-// Mock process.exit globally so it doesn't kill the Jest worker
-const mockExit = jest.spyOn(process, 'exit').mockImplementation((code) => {
-    throw new Error(`process.exit(${code})`);
-});
-
-afterAll(() => {
-    mockExit.mockRestore();
-});
+const { solveCaptcha, requestCapsolverToken, injectCaptchaToken, CaptchaFailedError } = require('../src/captcha');
 
 // ─── Helper: build a mock Puppeteer page ────────────────────────────
 
@@ -37,6 +28,22 @@ function makeMockPage({ stealthSolves = false } = {}) {
     };
 }
 
+// ─── CaptchaFailedError ─────────────────────────────────────────────
+
+describe('CaptchaFailedError', () => {
+    test('is an instance of Error', () => {
+        const err = new CaptchaFailedError('test message');
+        expect(err).toBeInstanceOf(Error);
+        expect(err).toBeInstanceOf(CaptchaFailedError);
+    });
+
+    test('has the correct name and message', () => {
+        const err = new CaptchaFailedError('all tiers failed');
+        expect(err.name).toBe('CaptchaFailedError');
+        expect(err.message).toBe('all tiers failed');
+    });
+});
+
 // ─── solveCaptcha() ─────────────────────────────────────────────────
 
 describe('solveCaptcha()', () => {
@@ -50,7 +57,6 @@ describe('solveCaptcha()', () => {
     beforeEach(() => {
         axios.get.mockReset();
         axios.post.mockReset();
-        mockExit.mockClear();
     });
 
     test('returns true when Tier 1 (stealth) succeeds', async () => {
@@ -74,7 +80,7 @@ describe('solveCaptcha()', () => {
         expect(axios.get).not.toHaveBeenCalled();
     });
 
-    test('calls process.exit(1) when all tiers fail', async () => {
+    test('throws CaptchaFailedError when all tiers fail', async () => {
         const page = makeMockPage({ stealthSolves: false });
         const configNoWit = { ...baseConfig, witAiToken: undefined };
 
@@ -85,9 +91,11 @@ describe('solveCaptcha()', () => {
 
         await expect(
             solveCaptcha(page, configNoWit, 'site-key', 'https://example.com')
-        ).rejects.toThrow('process.exit(1)');
+        ).rejects.toThrow(CaptchaFailedError);
 
-        expect(mockExit).toHaveBeenCalledWith(1);
+        await expect(
+            solveCaptcha(page, configNoWit, 'site-key', 'https://example.com')
+        ).rejects.toThrow('All CAPTCHA bypass tiers exhausted');
     });
 
     test('falls through to manual fallback when no capsolverKey and stealth fails', async () => {

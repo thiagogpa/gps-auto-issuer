@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { delay } = require('../helpers');
+const logger = require('../logger');
 
 /**
  * Get today's date as YYYY-MM-DD string.
@@ -16,21 +17,21 @@ function todayStr() {
  * @returns {Promise<object>} The extracted summary data
  */
 async function navigatePage5(page, config) {
-    console.log('Waiting for URL/Page transition to Page 5 (Boleto Summary)...');
+    logger.info('Waiting for URL/Page transition to Page 5 (Boleto Summary)...');
     try {
         await page.waitForFunction(() => {
             const text = document.body.innerText;
             const matchesBarcode = /[\d]{11}\-\d\s+[\d]{11}\-\d/.test(text);
             return text.includes('Data de Vencimento') || matchesBarcode;
         }, { timeout: 20000 });
-        console.log('Successfully on Page 5 (Summary)!');
+        logger.info('Successfully on Page 5 (Summary)!');
     } catch {
-        console.log('Continuing without Page 5 confirmation...');
+        logger.warn('Continuing without Page 5 confirmation...');
     }
 
     await delay(2000, 3000);
 
-    console.log('Extracting JSON data from Page 5...');
+    logger.debug('Extracting JSON data from Page 5...');
     const summaryData = await page.evaluate(() => {
         const text = document.body.innerText;
         const nisMatch = text.match(/NIT\s*\/\s*PIS\s*\/\s*PASEP:\s*([\d\.\-]+)/i);
@@ -50,10 +51,11 @@ async function navigatePage5(page, config) {
         };
     });
 
-    const downloadPath = path.join(process.cwd(), 'pdf');
+    const downloadPath = path.join(process.cwd(), 'output');
     const jsonOutPath = path.join(downloadPath, `boleto_summary_${todayStr()}.json`);
     fs.writeFileSync(jsonOutPath, JSON.stringify(summaryData, null, 2));
-    console.log('Saved JSON summary to', jsonOutPath, summaryData);
+    logger.info('Saved JSON summary to ' + jsonOutPath);
+    logger.debug('Summary data: ' + JSON.stringify(summaryData));
 
     return summaryData;
 }

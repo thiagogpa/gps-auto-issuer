@@ -37,4 +37,35 @@ async function sendDiscordNotification(webhookUrl, summary) {
     }
 }
 
-module.exports = { sendDiscordNotification };
+/**
+ * Send a warning/error message to a Discord channel via webhook.
+ *
+ * @param {string} webhookUrl - Discord webhook URL
+ * @param {string} title - Warning title
+ * @param {string} description - Warning description/details
+ */
+async function sendDiscordWarning(webhookUrl, title, description) {
+    if (!webhookUrl) {
+        console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord warning.');
+        return;
+    }
+
+    const embed = {
+        title: `⚠️ ${title}`,
+        description: description,
+        color: 0xe74c3c, // red
+        timestamp: new Date().toISOString(),
+        footer: { text: 'GPS Automation' }
+    };
+
+    try {
+        await axios.post(webhookUrl, {
+            embeds: [embed]
+        });
+        console.log('Discord warning sent successfully!');
+    } catch (err) {
+        console.error('Failed to send Discord warning:', err.message);
+    }
+}
+
+module.exports = { sendDiscordNotification, sendDiscordWarning };

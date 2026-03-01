@@ -1,16 +1,17 @@
 const { delay, extractSiteKey } = require('../helpers');
 const { solveCaptcha } = require('../captcha');
+const logger = require('../logger');
 
 /**
  * Page 1: Category selection, PIS input, CAPTCHA, click Consultar.
  * After this, the page transitions to a confirmation modal or Page 2.
  */
 async function navigatePage1(page, browser, config) {
-    console.log('Page loaded. Simulating human delay before selecting category...');
+    logger.debug('Page loaded. Simulating human delay before selecting category...');
     await page.waitForSelector(`label[for="${config.categoria}"]`);
     await page.click(`label[for="${config.categoria}"]`);
 
-    console.log('Category selected. Delaying before filling PIS...');
+    logger.debug('Category selected. Delaying before filling PIS...');
     await delay(500, 1500);
 
     // Fill the PIS input (br-input with shadow DOM)
@@ -29,7 +30,7 @@ async function navigatePage1(page, browser, config) {
         await innerInput.asElement().click();
         await delay(500, 1000);
 
-        console.log('Typing PIS natively...');
+        logger.debug('Typing PIS natively...');
         for (const char of unmaskedPis) {
             await page.keyboard.press(char, { delay: 10 + Math.random() * 50 });
             await delay(50, 150);
@@ -37,25 +38,25 @@ async function navigatePage1(page, browser, config) {
         await page.keyboard.press('Tab');
         await delay(500, 1000);
     } else {
-        console.log('WARNING: Could not find inner input for PIS. Fallback to wrapper click.');
+        logger.warn('Could not find inner input for PIS. Fallback to wrapper click.');
         const brInput = await page.$('br-input[formcontrolname="nit"]');
         await brInput.click();
         await delay(500, 1000);
         await page.keyboard.type(unmaskedPis, { delay: 150 });
     }
 
-    console.log('PIS filled. Delaying before CAPTCHA challenge...');
+    logger.info('PIS filled. Delaying before CAPTCHA challenge...');
     await delay(1500, 3000);
 
     // Extract site key and solve CAPTCHA
     const siteKey = await extractSiteKey(page);
-    if (siteKey) console.log(`Extracted SiteKey: ${siteKey}`);
+    if (siteKey) logger.debug(`Extracted SiteKey: ${siteKey}`);
 
     await solveCaptcha(page, config, siteKey, config.url);
 
     // Click Consultar
-    console.log('\nProceeding to Page Navigation...');
-    console.log('Waiting before clicking "Consultar"...');
+    logger.info('Proceeding to Page Navigation...');
+    logger.debug('Waiting before clicking "Consultar"...');
     await delay(1000, 2500);
 
     await page.evaluate(() => {
@@ -74,7 +75,7 @@ async function navigatePage1(page, browser, config) {
     await delay(1000, 2000);
 
     // Handle "Atenção" confirmation modal if it appears
-    console.log('Checking for Confirmation modal...');
+    logger.debug('Checking for Confirmation modal...');
     try {
         await page.waitForFunction(() => {
             const modals = Array.from(document.querySelectorAll('br-modal[title="Confirmação"]'));
@@ -95,7 +96,7 @@ async function navigatePage1(page, browser, config) {
                 }
             }
         });
-        console.log('Clicked "Sim" on the confirmation modal.');
+        logger.debug('Clicked "Sim" on the confirmation modal.');
 
         await page.waitForFunction(() => {
             const modals = Array.from(document.querySelectorAll('br-modal[title="Confirmação"]'));
@@ -103,10 +104,10 @@ async function navigatePage1(page, browser, config) {
         }, { timeout: 5000 });
         await delay(500, 1000);
     } catch {
-        console.log('No confirmation modal detected or timed out waiting for it.');
+        logger.debug('No confirmation modal detected or timed out waiting for it.');
     }
 
-    console.log('Clicked "Consultar". Waiting for the next phase...');
+    logger.info('Clicked "Consultar". Waiting for the next phase...');
 }
 
 module.exports = navigatePage1;

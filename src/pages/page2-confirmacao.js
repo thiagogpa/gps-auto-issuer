@@ -1,4 +1,5 @@
 const { delay, clickBrButton } = require('../helpers');
+const logger = require('../logger');
 
 /**
  * Page 2: Wait for transition, then click Confirmar.
@@ -11,9 +12,9 @@ async function navigatePage2(page, config) {
             text.includes('Confirmar') ||
             text.includes('Filiação');
     }, { timeout: 15000 });
-    console.log('Transition from Consultar to the next phase detected.');
+    logger.info('Transition from Consultar to the next phase detected.');
 
-    console.log('Page 2 loaded. Waiting before clicking Confirmar...');
+    logger.debug('Page 2 loaded. Waiting before clicking Confirmar...');
     await delay(2000, 4000);
 
     // Wait for Confirmar button to be available and enabled
@@ -23,7 +24,7 @@ async function navigatePage2(page, config) {
     }, { timeout: 10000 });
 
     await clickBrButton(page, 'Confirmar', { primary: true });
-    console.log('Clicked "Confirmar" on Page 2. Waiting for Page 3 to load...');
+    logger.info('Clicked "Confirmar" on Page 2. Waiting for Page 3 to load...');
     await delay(2000, 4000);
 }
 
