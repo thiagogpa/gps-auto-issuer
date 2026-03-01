@@ -142,7 +142,21 @@ async function runWithRetry(maxAttempts, delayMinutes) {
 
 // Main entry point
 (async () => {
+    logger.info('--- Starting GPS Automation Process ---');
     await runWithRetry(config.processRetryAttempts, config.processRetryDelayMinutes);
+    logger.info('--- GPS Automation Process Completed ---');
+
+    if (config.cronSchedule) {
+        try {
+            // Require cron-parser here so it doesn't break if not installed correctly
+            const cronParser = require('cron-parser');
+            const nextDate = cronParser.CronExpressionParser.parse(config.cronSchedule).next().toDate();
+            const formattedDate = nextDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+            logger.info(`Next execution scheduled for: ${formattedDate}`);
+        } catch (err) {
+            logger.error(`Invalid CRON_SCHEDULE string: ${config.cronSchedule}`);
+        }
+    }
 })();
 
 module.exports = { runAutomation, runWithRetry };

@@ -23,5 +23,5 @@ services:
       - TZ=America/Sao_Paulo
     entrypoint: /bin/sh
     command: >
-      -c "echo \"${CRON_SCHEDULE} cd /compose && docker compose run --rm gps-worker\" | crontab - && crond -f -l 2"
+      -c "cd /compose && docker compose run --rm gps-worker node src/log-schedule.js && if [ -n \"${CRON_SCHEDULE}\" ]; then echo \"${CRON_SCHEDULE} cd /compose && docker compose run --rm gps-worker\" | crontab - && crond -f -l 2; else tail -f /dev/null; fi"
     restart: unless-stopped
