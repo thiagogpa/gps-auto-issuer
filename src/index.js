@@ -9,6 +9,7 @@ const navigatePage2 = require('./pages/page2-confirmacao');
 const navigatePage3 = require('./pages/page3-pagamento');
 const navigatePage4 = require('./pages/page4-emissao');
 const navigatePage5 = require('./pages/page5-resumo');
+const { sendDiscordNotification } = require('./notifications/discord');
 
 puppeteer.use(StealthPlugin());
 
@@ -50,7 +51,10 @@ puppeteer.use(StealthPlugin());
         await navigatePage4(page, browser, config);
 
         // Page 5: JSON summary extraction
-        await navigatePage5(page, config);
+        const summary = await navigatePage5(page, config);
+
+        // Send Discord notification
+        await sendDiscordNotification(config.discordWebhookUrl, summary);
 
     } catch (err) {
         console.error('An error occurred during automation:', err);

@@ -23,8 +23,11 @@ const config = {
     // Debug mode — saves screenshots and HTML dumps when true
     debug: process.env.DEBUG === 'true',
 
+    // Discord webhook for notifications
+    discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL,
+
     // CapSolver retry config
-    capsolverMaxRetries: 3,
+    capsolverMaxRetries: parseInt(process.env.CAPSOLVER_MAX_RETRIES, 10) || 5,
     capsolverPollLimit: 40,
 };
 

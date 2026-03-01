@@ -33,6 +33,26 @@ docker-compose up --build
 
 Docker Compose will automatically read the `.env` file and pass the variables to the container.
 
+## Testing
+
+The project includes a unit test suite using **Jest**. All tests use mocks — no real browser, API calls, or file I/O.
+
+```bash
+npm test              # run all tests
+npx jest --coverage   # run with coverage report
+```
+
+**Test coverage:**
+
+| Module | File | Tests |
+|--------|------|-------|
+| Helpers | `tests/helpers.test.js` | `delay`, `clickBrButton`, `focusInputByLabel`, `extractSiteKey`, `saveDebug` |
+| Config | `tests/config.test.js` | Env parsing, defaults, validation, `process.exit` on missing PIS |
+| CAPTCHA | `tests/captcha.test.js` | 3-tier waterfall flow, CapSolver retry logic, token injection |
+| Discord | `tests/discord.test.js` | Webhook embed structure, null handling, error resilience |
+| Page 4 | `tests/pages/page4-emissao.test.js` | Date formatting for PDF filenames |
+| Page 5 | `tests/pages/page5-resumo.test.js` | Date formatting, summary regex extraction |
+
 ## Output
 
 After a successful run, the `pdf/` directory will contain:
