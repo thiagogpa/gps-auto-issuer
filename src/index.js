@@ -151,7 +151,19 @@ async function runWithRetry(maxAttempts, delayMinutes) {
             // Require cron-parser here so it doesn't break if not installed correctly
             const cronParser = require('cron-parser');
             const nextDate = cronParser.CronExpressionParser.parse(config.cronSchedule).next().toDate();
-            const formattedDate = nextDate.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Sao_Paulo',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const formattedDate = formatter.format(nextDate).replace(',', '');
+
             logger.info(`Next execution scheduled for: ${formattedDate}`);
         } catch (err) {
             logger.error(`Invalid CRON_SCHEDULE string: ${config.cronSchedule}`);
