@@ -1,6 +1,10 @@
 jest.mock('axios');
+jest.mock('fs');
+jest.mock('form-data');
 
 const axios = require('axios');
+const fs = require('fs');
+const FormData = require('form-data');
 const { sendDiscordNotification, sendDiscordWarning } = require('../src/notifications/discord');
 
 const fullSummary = {
@@ -59,6 +63,44 @@ describe('sendDiscordNotification()', () => {
         values.forEach(v => {
             expect(v).toContain('—');
         });
+    });
+
+    test('attaches PDF as FormData when pdfPath is provided and file exists', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+        fs.existsSync.mockReturnValue(true);
+        fs.createReadStream.mockReturnValue('mocked-stream');
+
+        const mockFormDataInstance = {
+            append: jest.fn(),
+            getHeaders: jest.fn().mockReturnValue({ 'content-type': 'multipart/form-data' })
+        };
+        FormData.mockImplementation(() => mockFormDataInstance);
+
+        await sendDiscordNotification('https://discord.com/api/webhooks/test', fullSummary, 'output/dummy.pdf');
+
+        expect(fs.existsSync).toHaveBeenCalledWith('output/dummy.pdf');
+        expect(fs.createReadStream).toHaveBeenCalledWith('output/dummy.pdf');
+
+        expect(mockFormDataInstance.append).toHaveBeenCalledWith('payload_json', expect.any(String));
+        expect(mockFormDataInstance.append).toHaveBeenCalledWith('file', 'mocked-stream');
+
+        expect(axios.post).toHaveBeenCalledWith(
+            'https://discord.com/api/webhooks/test',
+            mockFormDataInstance,
+            { headers: { 'content-type': 'multipart/form-data' } }
+        );
+    });
+
+    test('falls back to JSON embed if pdfPath is provided but file does not exist', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+        fs.existsSync.mockReturnValue(false);
+
+        await sendDiscordNotification('https://discord.com/api/webhooks/test', fullSummary, 'output/missing.pdf');
+
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        const [url, body] = axios.post.mock.calls[0];
+        expect(url).toBe('https://discord.com/api/webhooks/test');
+        expect(body.embeds).toHaveLength(1); // Sent cleanly as JSON instead of FormData
     });
 
     test('skips sending when webhookUrl is falsy', async () => {

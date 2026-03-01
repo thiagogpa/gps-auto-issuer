@@ -77,6 +77,29 @@ describe('config', () => {
 
     // ─── New config fields ──────────────────────────────────────────
 
+    test('savePdf defaults to false when env is unset', () => {
+        const config = loadConfig();
+        expect(config.savePdf).toBe(false);
+    });
+
+    test('savePdf parses "true" correctly', () => {
+        process.env.SAVE_PDF = 'true';
+        const config = loadConfig();
+        expect(config.savePdf).toBe(true);
+    });
+
+    test('saveJson defaults to false when env is unset', () => {
+        const config = loadConfig();
+        expect(config.saveJson).toBe(false);
+    });
+
+    test('saveJson parses "true" correctly', () => {
+        process.env.SAVE_JSON = 'true';
+        const config = loadConfig();
+        expect(config.saveJson).toBe(true);
+    });
+
+
     test('captchaRetryAttempts defaults to 2 when env is unset', () => {
         const config = loadConfig();
         expect(config.captchaRetryAttempts).toBe(2);

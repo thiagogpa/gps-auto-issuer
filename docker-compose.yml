@@ -4,6 +4,8 @@ services:
     image: gps-emulator
     env_file:
       - .env
+    environment:
+      - TZ=America/Sao_Paulo
     volumes:
       - ./output:/app/output
     restart: "no"
@@ -17,6 +19,8 @@ services:
       - .:/compose
     env_file:
       - .env
+    environment:
+      - TZ=America/Sao_Paulo
     entrypoint: /bin/sh
     command: >
       -c "echo \"${CRON_SCHEDULE} cd /compose && docker compose run --rm gps-worker\" | crontab - && crond -f -l 2"

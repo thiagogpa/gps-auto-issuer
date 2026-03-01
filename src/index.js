@@ -1,3 +1,5 @@
+process.env.TZ = 'America/Sao_Paulo';
+
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
@@ -54,13 +56,19 @@ async function runAutomation() {
         await navigatePage3(page, config);
 
         // Page 4: Emitir GPS + PDF capture
-        await navigatePage4(page, browser, config);
+        const pdfPath = await navigatePage4(page, browser, config);
 
         // Page 5: JSON summary extraction
         const summary = await navigatePage5(page, config);
 
         // Send Discord notification
-        await sendDiscordNotification(config.discordWebhookUrl, summary);
+        await sendDiscordNotification(config.discordWebhookUrl, summary, pdfPath);
+
+        // Clean up temporary PDF if save option is disabled
+        if (!config.savePdf && pdfPath && fs.existsSync(pdfPath)) {
+            fs.unlinkSync(pdfPath);
+            logger.info('Cleaned up temporary PDF file.');
+        }
 
     } catch (err) {
         // Save error artifacts before re-throwing

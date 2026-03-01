@@ -67,6 +67,17 @@ async function navigatePage4(page, browser, config) {
 
     logger.debug('Configured Puppeteer headless download settings.');
 
+    logger.debug('Waiting for Page 4 components to fully load...');
+    try {
+        await page.waitForFunction(() => {
+            const buttons = Array.from(document.querySelectorAll('br-button'));
+            return buttons.some(b => b.textContent && b.textContent.toLowerCase().includes('emitir gps'));
+        }, { timeout: 30000 });
+        logger.debug('Page 4 "Emitir GPS" button detected.');
+    } catch (e) {
+        logger.warn('Timeout waiting for "Emitir GPS" button to appear on Page 4. Proceeding anyway...');
+    }
+
     await saveDebug(page, 'page4_dump.html', 'html', config.debug);
 
     // Select "check all" checkbox
@@ -94,16 +105,17 @@ async function navigatePage4(page, browser, config) {
     logger.debug('Fired click and change events on br-checkbox components.');
     await delay(1000, 2000);
 
-    // Find "Emitir GPS" button
+    // Find "Emitir GPS" button securely using a single evaluateHandle to avoid Angular detachments mid-loop
     logger.debug('Waiting for "Emitir GPS" button to be enabled...');
-    const buttons = await page.$$('br-button');
-    let emitirBtn = null;
-    for (const btn of buttons) {
-        const textContent = await page.evaluate(el => el.textContent.toLowerCase(), btn);
-        if (textContent.includes('emitir gps')) {
-            emitirBtn = btn;
-            break;
-        }
+    const emitirBtn = await page.evaluateHandle(() => {
+        const buttons = Array.from(document.querySelectorAll('br-button'));
+        return buttons.find(b => b.textContent && b.textContent.toLowerCase().includes('emitir gps'));
+    });
+
+    const isMissingBtn = await page.evaluate(el => !el, emitirBtn);
+    if (isMissingBtn) {
+        logger.error('Could not find "Emitir GPS" button.');
+        return null;
     }
 
     // Set up popup listener BEFORE clicking
@@ -116,7 +128,8 @@ async function navigatePage4(page, browser, config) {
         });
     });
 
-    if (!emitirBtn) {
+    const isActuallyMissing = await page.evaluate(el => !el, emitirBtn);
+    if (isActuallyMissing) {
         logger.error('Could not find "Emitir GPS" button.');
         return null;
     }

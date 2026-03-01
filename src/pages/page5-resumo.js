@@ -53,8 +53,15 @@ async function navigatePage5(page, config) {
 
     const downloadPath = path.join(process.cwd(), 'output');
     const jsonOutPath = path.join(downloadPath, `boleto_summary_${todayStr()}.json`);
-    fs.writeFileSync(jsonOutPath, JSON.stringify(summaryData, null, 2));
-    logger.info('Saved JSON summary to ' + jsonOutPath);
+
+    if (config.saveJson) {
+        if (!fs.existsSync(downloadPath)) {
+            fs.mkdirSync(downloadPath, { recursive: true });
+        }
+        fs.writeFileSync(jsonOutPath, JSON.stringify(summaryData, null, 2));
+        logger.info('Saved JSON summary to ' + jsonOutPath);
+    }
+
     logger.debug('Summary data: ' + JSON.stringify(summaryData));
 
     return summaryData;

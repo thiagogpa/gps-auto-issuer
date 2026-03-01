@@ -12,3 +12,4 @@ output/*
 !package.json
 !package-lock.json
 !jest.config.js
+coverage/

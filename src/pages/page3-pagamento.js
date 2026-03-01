@@ -26,37 +26,29 @@ async function navigatePage3(page, config) {
 
     logger.debug('Searching for "Data do Pagamento" and "Código de Pagamento"...');
 
-    // 1. Fill Data do Pagamento — click calendar, select today
-    logger.debug('Opening "Data do Pagamento" calendar...');
-    await page.evaluate(() => {
-        const labels = Array.from(document.querySelectorAll('label'));
-        const dateLabel = labels.find(l => l.textContent.toLowerCase().includes('data do pagamento'));
-        if (dateLabel) {
-            const wrapper = dateLabel.closest('.br-input') || dateLabel.parentElement;
-            const btn = wrapper.querySelector('button') || wrapper.querySelector('.br-button');
-            if (btn) btn.click();
-            else {
-                const input = wrapper.querySelector('input');
-                if (input) input.click();
-            }
-        }
-    });
+    // 1. Fill Data do Pagamento — set to next valid weekday (no weekends)
+    logger.debug('Setting "Data do Pagamento" to next valid weekday...');
+    const paymentDate = new Date();
+    const originalMonth = paymentDate.getMonth();
 
-    logger.debug('Waiting for calendar popup...');
-    await delay(1000, 2000);
+    if (paymentDate.getDay() === 6) paymentDate.setDate(paymentDate.getDate() + 2); // Saturday -> Monday
+    else if (paymentDate.getDay() === 0) paymentDate.setDate(paymentDate.getDate() + 1); // Sunday -> Monday
 
-    logger.debug('Selecting "Today" from calendar...');
-    await page.evaluate(() => {
-        const calendarBtns = Array.from(document.querySelectorAll('.flatpickr-day.today, button.today, .is-today, .today'));
-        if (calendarBtns.length > 0) {
-            calendarBtns[0].click();
-        } else {
-            const allButtons = Array.from(document.querySelectorAll('button, span.br-button'));
-            const hojeBtn = allButtons.find(b => b.textContent.toLowerCase().includes('hoje'));
-            if (hojeBtn) hojeBtn.click();
+    // If pushing to Monday changed the month, it will trigger an impossible validation on RFB's end
+    // (Mês/Ano deve ser o mesmo da data de cálculo). We'll attempt it anyway and capture the clear error.
+
+    const paymentDateStr = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}-${String(paymentDate.getDate()).padStart(2, '0')}`;
+
+    await page.evaluate((dateStr) => {
+        const input = document.getElementById('input-dataPagamento') || document.querySelector('input[type="date"]');
+        if (input) {
+            input.removeAttribute('min'); // bypass frontend restriction
+            input.value = dateStr;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
         }
-    });
-    logger.debug('Selected today as payment date.');
+    }, paymentDateStr);
+    logger.debug(`Selected payment date: ${paymentDateStr}.`);
     await delay(500, 1000);
 
     // 2. Select Código do Pagamento
@@ -181,8 +173,19 @@ async function navigatePage3(page, config) {
     logger.debug('Clicking final "Confirmar"...');
     await clickBrButton(page, 'Confirmar', { primary: true, excludeModal: true });
 
-    logger.info('Page 3 flow complete! Waiting for Page 4 to load...');
+    logger.debug('Checking for RFB validation errors...');
     await delay(3000, 6000);
+
+    const errorMessage = await page.evaluate(() => {
+        const msg = document.querySelector('br-message[state="danger"]');
+        return msg ? msg.textContent.trim() : null;
+    });
+
+    if (errorMessage) {
+        throw new Error(`RFB Validation Error: ${errorMessage}`);
+    }
+
+    logger.info('Page 3 flow complete! Waiting for Page 4 to load...');
 }
 
 module.exports = navigatePage3;

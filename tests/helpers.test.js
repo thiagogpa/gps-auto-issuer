@@ -102,25 +102,38 @@ describe('extractSiteKey()', () => {
 
 describe('saveDebug()', () => {
     test('saves screenshot when debug=true and type="screenshot"', async () => {
+        const fs = require('fs');
+        const path = require('path');
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
         const page = {
             screenshot: jest.fn().mockResolvedValue(undefined),
         };
+        const expectedPath = path.join(process.cwd(), 'output', 'test.png');
         await saveDebug(page, 'test.png', 'screenshot', true);
-        expect(page.screenshot).toHaveBeenCalledWith({ path: 'test.png', fullPage: true });
+        expect(page.screenshot).toHaveBeenCalledWith({ path: expectedPath, fullPage: true });
+        fs.existsSync.mockRestore();
     });
 
     test('saves HTML dump when debug=true and type="html"', async () => {
         const fs = require('fs');
+        const path = require('path');
         jest.spyOn(fs, 'writeFileSync').mockImplementation(() => { });
+        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+        jest.spyOn(fs, 'mkdirSync').mockImplementation(() => { });
         const page = {
             content: jest.fn().mockResolvedValue('<html>test</html>'),
         };
 
+        const expectedPath = path.join(process.cwd(), 'output', 'dump.html');
         await saveDebug(page, 'dump.html', 'html', true);
+
         expect(page.content).toHaveBeenCalled();
-        expect(fs.writeFileSync).toHaveBeenCalledWith('dump.html', '<html>test</html>');
+        expect(fs.writeFileSync).toHaveBeenCalledWith(expectedPath, '<html>test</html>');
+        expect(fs.mkdirSync).toHaveBeenCalledWith(path.dirname(expectedPath), { recursive: true });
 
         fs.writeFileSync.mockRestore();
+        fs.existsSync.mockRestore();
+        fs.mkdirSync.mockRestore();
     });
 
     test('does nothing when debug=false', async () => {
@@ -136,3 +149,4 @@ describe('saveDebug()', () => {
         expect(page.content).not.toHaveBeenCalled();
     });
 });
+

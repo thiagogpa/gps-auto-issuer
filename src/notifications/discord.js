@@ -1,4 +1,6 @@
 const axios = require('axios');
+const fs = require('fs');
+const FormData = require('form-data');
 
 /**
  * Send a boleto summary to a Discord channel via webhook.
@@ -6,7 +8,7 @@ const axios = require('axios');
  * @param {string} webhookUrl - Discord webhook URL
  * @param {object} summary - Boleto summary data from Page 5
  */
-async function sendDiscordNotification(webhookUrl, summary) {
+async function sendDiscordNotification(webhookUrl, summary, pdfPath = null) {
     if (!webhookUrl) {
         console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord notification.');
         return;
@@ -28,9 +30,19 @@ async function sendDiscordNotification(webhookUrl, summary) {
     };
 
     try {
-        await axios.post(webhookUrl, {
-            embeds: [embed]
-        });
+        if (pdfPath && fs.existsSync(pdfPath)) {
+            const formData = new FormData();
+            formData.append('payload_json', JSON.stringify({ embeds: [embed] }));
+            formData.append('file', fs.createReadStream(pdfPath));
+
+            await axios.post(webhookUrl, formData, {
+                headers: { ...formData.getHeaders() }
+            });
+        } else {
+            await axios.post(webhookUrl, {
+                embeds: [embed]
+            });
+        }
         console.log('Discord notification sent successfully!');
     } catch (err) {
         console.error('Failed to send Discord notification:', err.message);

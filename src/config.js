@@ -24,6 +24,10 @@ const config = {
     // Debug mode — saves screenshots and HTML dumps when true
     debug: process.env.DEBUG === 'true',
 
+    // File saving toggles
+    savePdf: process.env.SAVE_PDF === 'true',
+    saveJson: process.env.SAVE_JSON === 'true',
+
     // Discord webhook for notifications
     discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL,
 

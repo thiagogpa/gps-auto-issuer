@@ -85,15 +85,23 @@ async function extractSiteKey(page, timeout = 10000) {
 async function saveDebug(page, filename, type, debug) {
     if (!debug) return;
     try {
-        if (type === 'screenshot') {
-            await page.screenshot({ path: filename, fullPage: true });
-        } else {
-            const fs = require('fs');
-            fs.writeFileSync(filename, await page.content());
+        const fs = require('fs');
+        const path = require('path');
+        const outPath = path.join(process.cwd(), 'output', filename);
+
+        const outDir = path.dirname(outPath);
+        if (!fs.existsSync(outDir)) {
+            fs.mkdirSync(outDir, { recursive: true });
         }
-        logger.debug(`Saved ${filename}`);
+
+        if (type === 'screenshot') {
+            await page.screenshot({ path: outPath, fullPage: true });
+        } else {
+            fs.writeFileSync(outPath, await page.content());
+        }
+        logger.debug(`Saved ${outPath}`);
     } catch (e) {
-        logger.debug(`Could not save ${filename}: ${e.message}`);
+        logger.warn(`Could not save ${filename}: ${e.message}`);
     }
 }
 
