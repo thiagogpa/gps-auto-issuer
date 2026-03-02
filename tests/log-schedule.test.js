@@ -28,8 +28,8 @@ describe('log-schedule.js execution dates', () => {
         expect(logger.info).toHaveBeenCalled();
         const infoMessage = logger.info.mock.calls[0][0];
 
-        // Should contain strings like "GPS Scheduler started. Next execution scheduled for: "
-        expect(infoMessage).toMatch(/GPS Scheduler started\. Next execution scheduled for:/);
+        // Should contain strings like "GPS Scheduler started. Next execution scheduled for: 2026-03-16 08:00:00"
+        expect(infoMessage).toMatch(/GPS Scheduler started\. Next execution scheduled for: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
     });
 
     test('should log warning when CRON_SCHEDULE is undefined', () => {
