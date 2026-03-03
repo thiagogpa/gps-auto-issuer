@@ -5,3 +5,8 @@ node_modules/
 *.png
 *.html
 pdf/
+tests/
+coverage/
+jest.config.js
+README.md
+docker-compose.yml
