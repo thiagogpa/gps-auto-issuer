@@ -105,4 +105,49 @@ async function saveDebug(page, filename, type, debug) {
     }
 }
 
-module.exports = { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug };
+/**
+ * Delete debug artifacts older than maxDays from outputDir.
+ * Only removes files matching known debug artifact filename patterns.
+ * @param {string} outputDir - Directory to scan
+ * @param {number} maxDays - Files older than this many days are deleted
+ */
+function cleanupDebugArtifacts(outputDir, maxDays) {
+    const fs = require('fs');
+    const path = require('path');
+
+    const PATTERNS = [
+        /^page\d+_dump\.html$/,
+        /^page\d+_screenshot.*\.png$/,
+        /^error_screenshot\.png$/,
+        /^error_dump\.html$/,
+        /^page_boleto_popup\.png$/,
+        /^page5_fallback\.png$/,
+    ];
+
+    try {
+        if (!fs.existsSync(outputDir)) return;
+
+        const cutoffMs = maxDays * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        const files = fs.readdirSync(outputDir);
+        for (const file of files) {
+            if (!PATTERNS.some(re => re.test(file))) continue;
+
+            const filePath = path.join(outputDir, file);
+            try {
+                const stat = fs.statSync(filePath);
+                if (now - stat.mtimeMs > cutoffMs) {
+                    fs.unlinkSync(filePath);
+                    logger.debug(`Deleted old debug artifact: ${file}`);
+                }
+            } catch (e) {
+                logger.warn(`Could not process artifact ${file}: ${e.message}`);
+            }
+        }
+    } catch (e) {
+        logger.warn(`cleanupDebugArtifacts failed: ${e.message}`);
+    }
+}
+
+module.exports = { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug, cleanupDebugArtifacts };

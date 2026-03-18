@@ -134,6 +134,12 @@ async function navigatePage4(page, browser, config) {
         return null;
     }
 
+    // DRY_RUN: skip submission and PDF capture
+    if (config.dryRun) {
+        logger.info('DRY_RUN: skipping "Emitir GPS" click and PDF capture');
+        return null;
+    }
+
     // Solve Page 4 CAPTCHA
     if (config.capsolverKey) {
         logger.info('--- [PAGE 4 CAPTCHA] PAID TOKEN FALLBACK (CapSolver) ---');
@@ -178,23 +184,15 @@ async function navigatePage4(page, browser, config) {
             logger.debug('Giving Angular 2s to detect token before second click...');
             await delay(2000, 2500);
 
-            // Second click via coordinates
-            logger.debug('Clicking "Emitir GPS" via coordinate-based mouse click...');
-            const btnCoords = await page.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('br-button'));
-                const btn = buttons.find(b => b.textContent && b.textContent.includes('Emitir GPS'));
-                if (btn) {
-                    const rect = btn.getBoundingClientRect();
-                    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, found: true };
-                }
-                return { found: false };
-            });
-
-            if (btnCoords && btnCoords.found) {
-                await page.mouse.click(btnCoords.x, btnCoords.y);
-                logger.debug(`Clicked "Emitir GPS" via mouse at (${btnCoords.x.toFixed(0)}, ${btnCoords.y.toFixed(0)})`);
-            } else {
-                logger.warn('Could not locate "Emitir GPS" button for coordinate click.');
+            // Second click to submit — reuse the already-captured handle
+            logger.debug('Clicking "Emitir GPS" again to submit after token injection...');
+            try {
+                await emitirBtn.click();
+                logger.debug('Clicked "Emitir GPS" button (second click via handle).');
+            } catch (e) {
+                // Handle may be stale if Angular re-rendered after token injection;
+                // the form typically auto-submits on token detection so this is non-fatal.
+                logger.debug(`Second click skipped (handle stale after token injection): ${e.message}`);
             }
         } catch (err) {
             logger.error(`FAIL: Page 4 CapSolver failed. Reason: ${err.message}`);

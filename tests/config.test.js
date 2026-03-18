@@ -144,6 +144,45 @@ describe('config', () => {
         expect(config.cronSchedule).toBe('');
     });
 
+    // ─── capsolverPollLimit ─────────────────────────────────────────
+
+    test('capsolverPollLimit defaults to 40 when env is unset', () => {
+        const config = loadConfig();
+        expect(config.capsolverPollLimit).toBe(40);
+    });
+
+    test('capsolverPollLimit parses custom value from env', () => {
+        process.env.CAPSOLVER_POLL_LIMIT = '20';
+        const config = loadConfig();
+        expect(config.capsolverPollLimit).toBe(20);
+    });
+
+    // ─── debugArtifactMaxDays ───────────────────────────────────────
+
+    test('debugArtifactMaxDays defaults to 7 when env is unset', () => {
+        const config = loadConfig();
+        expect(config.debugArtifactMaxDays).toBe(7);
+    });
+
+    test('debugArtifactMaxDays parses custom value from env', () => {
+        process.env.DEBUG_ARTIFACT_MAX_DAYS = '14';
+        const config = loadConfig();
+        expect(config.debugArtifactMaxDays).toBe(14);
+    });
+
+    // ─── dryRun ─────────────────────────────────────────────────────
+
+    test('dryRun defaults to false when env is unset', () => {
+        const config = loadConfig();
+        expect(config.dryRun).toBe(false);
+    });
+
+    test('dryRun is true when DRY_RUN=true', () => {
+        process.env.DRY_RUN = 'true';
+        const config = loadConfig();
+        expect(config.dryRun).toBe(true);
+    });
+
     // ─── API key validation ─────────────────────────────────────────
 
     test('calls process.exit(1) when PIS is missing', () => {

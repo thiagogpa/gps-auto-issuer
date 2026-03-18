@@ -170,11 +170,7 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
             throw new CaptchaFailedError('All CAPTCHA bypass tiers exhausted. Automation cannot proceed.');
         }
     } else if (!solved) {
-        logger.warn('--- [MANUAL FALLBACK] ---');
-        logger.warn('CAPTCHA was not bypassed automatically.');
-        logger.warn('Waiting 90 seconds for manual solve...');
-        await delay(90000, 90000);
-        solved = true;
+        throw new CaptchaFailedError('All CAPTCHA bypass tiers exhausted. Automation cannot proceed.');
     }
 
     return solved;

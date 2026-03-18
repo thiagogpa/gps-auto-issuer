@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
+    "debug": "DEBUG=true LOG_LEVEL=debug node src/index.js",
     "test": "jest --verbose"
   },
   "keywords": [],

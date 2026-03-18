@@ -80,4 +80,46 @@ async function sendDiscordWarning(webhookUrl, title, description) {
     }
 }
 
-module.exports = { sendDiscordNotification, sendDiscordWarning };
+/**
+ * Send a startup notification to a Discord channel via webhook.
+ *
+ * @param {string} webhookUrl - Discord webhook URL
+ * @param {string} [nextRunStr] - Human-readable next scheduled run time, or falsy if unscheduled
+ */
+async function sendDiscordStartup(webhookUrl, nextRunStr) {
+    if (!webhookUrl) {
+        console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord startup notification.');
+        return;
+    }
+
+    const nowStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    }).format(new Date()).replace(',', '');
+
+    const embed = {
+        title: '🚀 GPS Automation Started',
+        color: 0x3498db, // blue
+        fields: [
+            { name: 'Started At', value: nowStr, inline: true },
+            { name: 'Next Scheduled Run', value: nextRunStr || '—', inline: true },
+        ],
+        timestamp: new Date().toISOString(),
+        footer: { text: 'GPS Automation' }
+    };
+
+    try {
+        await axios.post(webhookUrl, { embeds: [embed] });
+        console.log('Discord startup notification sent successfully!');
+    } catch (err) {
+        console.error('Failed to send Discord startup notification:', err.message);
+    }
+}
+
+module.exports = { sendDiscordNotification, sendDiscordWarning, sendDiscordStartup };

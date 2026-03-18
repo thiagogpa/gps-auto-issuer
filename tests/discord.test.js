@@ -5,7 +5,7 @@ jest.mock('form-data');
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
-const { sendDiscordNotification, sendDiscordWarning } = require('../src/notifications/discord');
+const { sendDiscordNotification, sendDiscordWarning, sendDiscordStartup } = require('../src/notifications/discord');
 
 const fullSummary = {
     nis: '123.45678.90-1',
@@ -125,6 +125,50 @@ describe('sendDiscordNotification()', () => {
         );
 
         mockError.mockRestore();
+    });
+});
+
+// ─── sendDiscordStartup() ───────────────────────────────────────────
+
+describe('sendDiscordStartup()', () => {
+    beforeEach(() => {
+        axios.post.mockReset();
+    });
+
+    test('skips sending when webhookUrl is falsy', async () => {
+        await sendDiscordStartup(undefined, '2026-03-17 08:00:00');
+        await sendDiscordStartup(null, '2026-03-17 08:00:00');
+        await sendDiscordStartup('', '2026-03-17 08:00:00');
+
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    test('sends blue embed with title containing "Started" and next-run field', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+
+        await sendDiscordStartup('https://discord.com/api/webhooks/test', '2026-04-16 08:00:00');
+
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        const [url, body] = axios.post.mock.calls[0];
+        expect(url).toBe('https://discord.com/api/webhooks/test');
+
+        const embed = body.embeds[0];
+        expect(embed.title).toContain('Started');
+        expect(embed.color).toBe(0x3498db);
+
+        const nextField = embed.fields.find(f => f.name === 'Next Scheduled Run');
+        expect(nextField).toBeDefined();
+        expect(nextField.value).toBe('2026-04-16 08:00:00');
+    });
+
+    test('next-run field value is "—" when nextRunStr is falsy', async () => {
+        axios.post.mockResolvedValue({ status: 204 });
+
+        await sendDiscordStartup('https://discord.com/api/webhooks/test', null);
+
+        const embed = axios.post.mock.calls[0][1].embeds[0];
+        const nextField = embed.fields.find(f => f.name === 'Next Scheduled Run');
+        expect(nextField.value).toBe('—');
     });
 });
 

@@ -3,6 +3,7 @@ process.env.TZ = 'America/Sao_Paulo';
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
+const path = require('path');
 const config = require('./config');
 const logger = require('./logger');
 const { CaptchaFailedError } = require('./captcha');
@@ -13,7 +14,7 @@ const navigatePage2 = require('./pages/page2-confirmacao');
 const navigatePage3 = require('./pages/page3-pagamento');
 const navigatePage4 = require('./pages/page4-emissao');
 const navigatePage5 = require('./pages/page5-resumo');
-const { sendDiscordNotification, sendDiscordWarning } = require('./notifications/discord');
+const { sendDiscordNotification, sendDiscordWarning, sendDiscordStartup } = require('./notifications/discord');
 
 puppeteer.use(StealthPlugin());
 
@@ -21,9 +22,41 @@ puppeteer.use(StealthPlugin());
  * Run the full GPS automation flow once.
  * Extracted to allow retry logic to call it multiple times.
  */
+const outputDir = path.join(process.cwd(), 'output');
+
+/**
+ * Return a human-readable string for the next cron run, or null on error.
+ * @param {string} cronSchedule
+ * @returns {string|null}
+ */
+function getNextRunString(cronSchedule) {
+    if (!cronSchedule) return null;
+    try {
+        const cronParser = require('cron-parser');
+        const nextDate = cronParser.CronExpressionParser.parse(cronSchedule).next().toDate();
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).format(nextDate).replace(',', '');
+    } catch {
+        return null;
+    }
+}
+
 async function runAutomation() {
     let browser;
     let page;
+
+    // Ensure output directory exists when we will write files to it
+    if (config.savePdf || config.saveJson || config.debug) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
 
     try {
         logger.info('Starting GPS automation with 3-Tier Waterfall CAPTCHA bypass...');
@@ -74,8 +107,8 @@ async function runAutomation() {
         // Save error artifacts before re-throwing
         try {
             if (page) {
-                await page.screenshot({ path: 'error_screenshot.png', fullPage: true });
-                fs.writeFileSync('error_dump.html', await page.content());
+                await page.screenshot({ path: path.join(outputDir, 'error_screenshot.png'), fullPage: true });
+                fs.writeFileSync(path.join(outputDir, 'error_dump.html'), await page.content());
                 logger.info('Saved error_screenshot.png and error_dump.html');
             }
         } catch (e) {
@@ -143,31 +176,17 @@ async function runWithRetry(maxAttempts, delayMinutes) {
 // Main entry point
 (async () => {
     logger.info('--- Starting GPS Automation Process ---');
+
+    const nextRunStr = getNextRunString(config.cronSchedule);
+    await sendDiscordStartup(config.discordWebhookUrl, nextRunStr);
+
     await runWithRetry(config.processRetryAttempts, config.processRetryDelayMinutes);
     logger.info('--- GPS Automation Process Completed ---');
 
-    if (config.cronSchedule) {
-        try {
-            // Require cron-parser here so it doesn't break if not installed correctly
-            const cronParser = require('cron-parser');
-            const nextDate = cronParser.CronExpressionParser.parse(config.cronSchedule).next().toDate();
-
-            const formatter = new Intl.DateTimeFormat('en-CA', {
-                timeZone: 'America/Sao_Paulo',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            });
-            const formattedDate = formatter.format(nextDate).replace(',', '');
-
-            logger.info(`Next execution scheduled for: ${formattedDate}`);
-        } catch (err) {
-            logger.error(`Invalid CRON_SCHEDULE string: ${config.cronSchedule}`);
-        }
+    if (nextRunStr) {
+        logger.info(`Next execution scheduled for: ${nextRunStr}`);
+    } else if (config.cronSchedule) {
+        logger.error(`Invalid CRON_SCHEDULE string: ${config.cronSchedule}`);
     }
 })();
 

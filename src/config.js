@@ -33,7 +33,13 @@ const config = {
 
     // CapSolver retry config
     capsolverMaxRetries: parseInt(process.env.CAPSOLVER_MAX_RETRIES, 10) || 5,
-    capsolverPollLimit: 40,
+    capsolverPollLimit: parseInt(process.env.CAPSOLVER_POLL_LIMIT, 10) || 40,
+
+    // Debug artifact cleanup
+    debugArtifactMaxDays: parseInt(process.env.DEBUG_ARTIFACT_MAX_DAYS, 10) || 7,
+
+    // Dry run mode — skips final form submission
+    dryRun: process.env.DRY_RUN === 'true',
 
     // Cron schedule (e.g. "0 8 16 * *" = 8:00 AM on the 16th monthly)
     cronSchedule: process.env.CRON_SCHEDULE || '',

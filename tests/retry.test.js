@@ -32,11 +32,16 @@ jest.mock('../src/pages/page5-resumo', () => jest.fn().mockResolvedValue({ nis: 
 jest.mock('../src/notifications/discord', () => ({
     sendDiscordNotification: jest.fn().mockResolvedValue(undefined),
     sendDiscordWarning: jest.fn().mockResolvedValue(undefined),
+    sendDiscordStartup: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('../src/config', () => ({
     url: 'https://example.com',
     pis: '123',
+    savePdf: false,
+    saveJson: false,
+    debug: false,
     discordWebhookUrl: 'https://discord.com/api/webhooks/test',
+    cronSchedule: '',
     processRetryAttempts: 2,
     processRetryDelayMinutes: 0,
 }));

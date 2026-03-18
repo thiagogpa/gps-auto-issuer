@@ -1,4 +1,4 @@
-const { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug } = require('../src/helpers');
+const { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug, cleanupDebugArtifacts } = require('../src/helpers');
 
 // ─── delay() ────────────────────────────────────────────────────────
 
@@ -147,6 +147,62 @@ describe('saveDebug()', () => {
 
         await saveDebug(page, 'dump.html', 'html', false);
         expect(page.content).not.toHaveBeenCalled();
+    });
+});
+
+// ─── cleanupDebugArtifacts() ─────────────────────────────────────────
+
+describe('cleanupDebugArtifacts()', () => {
+    const path = require('path');
+    let fs;
+
+    beforeEach(() => {
+        fs = require('fs');
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        jest.spyOn(fs, 'readdirSync');
+        jest.spyOn(fs, 'statSync');
+        jest.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    const OLD_MTIME = Date.now() - 10 * 24 * 60 * 60 * 1000; // 10 days ago
+    const NEW_MTIME = Date.now() - 1 * 24 * 60 * 60 * 1000;  // 1 day ago
+
+    test('deletes matching artifact older than maxDays', () => {
+        fs.readdirSync.mockReturnValue(['page1_dump.html']);
+        fs.statSync.mockReturnValue({ mtimeMs: OLD_MTIME });
+
+        cleanupDebugArtifacts('/fake/output', 7);
+
+        expect(fs.unlinkSync).toHaveBeenCalledWith(path.join('/fake/output', 'page1_dump.html'));
+    });
+
+    test('does NOT delete matching artifact newer than maxDays', () => {
+        fs.readdirSync.mockReturnValue(['page1_dump.html']);
+        fs.statSync.mockReturnValue({ mtimeMs: NEW_MTIME });
+
+        cleanupDebugArtifacts('/fake/output', 7);
+
+        expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    test('does NOT delete non-matching file regardless of age', () => {
+        fs.readdirSync.mockReturnValue(['boleto_summary_2026-03-17.json']);
+        fs.statSync.mockReturnValue({ mtimeMs: OLD_MTIME });
+
+        cleanupDebugArtifacts('/fake/output', 7);
+
+        expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    test('does not throw when output directory does not exist', () => {
+        fs.existsSync.mockReturnValue(false);
+
+        expect(() => cleanupDebugArtifacts('/fake/output', 7)).not.toThrow();
+        expect(fs.unlinkSync).not.toHaveBeenCalled();
     });
 });
 

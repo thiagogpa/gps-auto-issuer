@@ -98,13 +98,17 @@ describe('solveCaptcha()', () => {
         ).rejects.toThrow('All CAPTCHA bypass tiers exhausted');
     });
 
-    test('falls through to manual fallback when no capsolverKey and stealth fails', async () => {
+    test('throws CaptchaFailedError immediately when no capsolverKey and stealth fails', async () => {
         const page = makeMockPage({ stealthSolves: false });
         const configNoKeys = { ...baseConfig, witAiToken: undefined, capsolverKey: undefined };
 
-        const result = await solveCaptcha(page, configNoKeys, 'site-key', 'https://example.com');
-        // Manual fallback sets solved = true after waiting
-        expect(result).toBe(true);
+        await expect(
+            solveCaptcha(page, configNoKeys, 'site-key', 'https://example.com')
+        ).rejects.toThrow(CaptchaFailedError);
+
+        // Ensure no 90s delay was triggered
+        const { delay } = require('../src/helpers');
+        expect(delay).not.toHaveBeenCalledWith(90000, 90000);
     });
 });
 
