@@ -45,6 +45,6 @@ describe('log-schedule.js execution dates', () => {
 
         require('../src/log-schedule.js');
 
-        expect(logger.error).toHaveBeenCalledWith('Invalid CRON_SCHEDULE string: INVALID_CRON');
+        expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Invalid CRON_SCHEDULE format'));
     });
 });

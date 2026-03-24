@@ -2,11 +2,15 @@ const cronParser = require('cron-parser');
 const config = require('./config');
 const logger = require('./logger');
 
+const CRON_FORMAT = /^[0-9*/,\-]+ [0-9*/,\-]+ [0-9*/,\-]+ [0-9*/,\-]+ [0-9*/,\-]+$/;
+
 if (!config.cronSchedule) {
     logger.warn('No CRON_SCHEDULE provided. Scheduler will not execute tasks.');
+} else if (!CRON_FORMAT.test(config.cronSchedule)) {
+    logger.error(`Invalid CRON_SCHEDULE format: "${config.cronSchedule}". Expected 5 fields (minute hour day month weekday).`);
 } else {
     try {
-        const nextDate = cronParser.CronExpressionParser.parse(config.cronSchedule).next().toDate();
+        const nextDate = cronParser.CronExpressionParser.parse(config.cronSchedule, { tz: 'America/Sao_Paulo' }).next().toDate();
 
         const formatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'America/Sao_Paulo',

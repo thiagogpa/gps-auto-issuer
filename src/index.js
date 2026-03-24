@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config');
 const logger = require('./logger');
-const { CaptchaFailedError } = require('./captcha');
+const { CaptchaFailedError, IpBlockedError } = require('./captcha');
 const { isBusinessDay, getNextBusinessDay } = require('./business-days');
 
 // Page modules
@@ -19,11 +19,34 @@ const { sendDiscordNotification, sendDiscordWarning, sendDiscordStartup } = requ
 
 puppeteer.use(StealthPlugin());
 
-/**
- * Run the full GPS automation flow once.
- * Extracted to allow retry logic to call it multiple times.
- */
 const outputDir = path.join(process.cwd(), 'output');
+
+async function launchBrowser() {
+    return puppeteer.launch({
+        headless: false,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu'
+        ]
+    });
+}
+
+async function saveErrorArtifacts(page) {
+    try {
+        if (page) {
+            await page.screenshot({ path: path.join(outputDir, 'error_screenshot.png'), fullPage: true });
+            fs.writeFileSync(path.join(outputDir, 'error_dump.html'), await page.content());
+            logger.info('Saved error_screenshot.png and error_dump.html');
+        }
+    } catch (e) {
+        logger.warn('Could not save error artifacts: ' + e.message);
+    }
+}
 
 /**
  * Return a human-readable string for the next cron run, or null on error.
@@ -34,7 +57,7 @@ function getNextRunString(cronSchedule) {
     if (!cronSchedule) return null;
     try {
         const cronParser = require('cron-parser');
-        const nextDate = cronParser.CronExpressionParser.parse(cronSchedule).next().toDate();
+        const nextDate = cronParser.CronExpressionParser.parse(cronSchedule, { tz: 'America/Sao_Paulo' }).next().toDate();
         return new Intl.DateTimeFormat('en-CA', {
             timeZone: 'America/Sao_Paulo',
             year: 'numeric',
@@ -92,18 +115,7 @@ async function runAutomation() {
 
     try {
         logger.info('Starting GPS automation with 3-Tier Waterfall CAPTCHA bypass...');
-        browser = await puppeteer.launch({
-            headless: 'new',
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu'
-            ]
-        });
+        browser = await launchBrowser();
 
         page = await browser.newPage();
         await page.setViewport({ width: 1366, height: 768 });
@@ -136,17 +148,7 @@ async function runAutomation() {
         }
 
     } catch (err) {
-        // Save error artifacts before re-throwing
-        try {
-            if (page) {
-                await page.screenshot({ path: path.join(outputDir, 'error_screenshot.png'), fullPage: true });
-                fs.writeFileSync(path.join(outputDir, 'error_dump.html'), await page.content());
-                logger.info('Saved error_screenshot.png and error_dump.html');
-            }
-        } catch (e) {
-            logger.warn('Could not save error artifacts: ' + e.message);
-        }
-
+        await saveErrorArtifacts(page);
         throw err; // Re-throw so the retry loop can handle it
     } finally {
         if (browser) await browser.close();
@@ -170,7 +172,17 @@ async function runWithRetry(maxAttempts, delayMinutes) {
             await runAutomation();
             return; // Success — exit the retry loop
         } catch (err) {
-            if (err instanceof CaptchaFailedError) {
+            if (err instanceof IpBlockedError) {
+                // IP is flagged by Google — retrying won't help
+                const message = 'IP is blocked by Google reCAPTCHA ("Try again later"). CAPTCHA challenges are being denied for this IP. Manual intervention required.';
+                logger.error(message);
+                await sendDiscordWarning(
+                    config.discordWebhookUrl,
+                    'IP Blocked by Google reCAPTCHA',
+                    message
+                );
+                return; // Do not retry
+            } else if (err instanceof CaptchaFailedError) {
                 logger.error(`Process attempt ${attempt}/${totalAttempts} failed: ${err.message}`);
 
                 if (attempt < totalAttempts) {

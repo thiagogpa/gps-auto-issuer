@@ -150,4 +150,15 @@ function cleanupDebugArtifacts(outputDir, maxDays) {
     }
 }
 
-module.exports = { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug, cleanupDebugArtifacts };
+/**
+ * Redact a PIS/NIS number, showing only the last 4 digits.
+ * @param {string} value
+ * @returns {string}
+ */
+function redact(value) {
+    if (!value) return '(not set)';
+    const digits = value.replace(/\D/g, '');
+    return `***${digits.slice(-4)}`;
+}
+
+module.exports = { delay, clickBrButton, focusInputByLabel, extractSiteKey, saveDebug, cleanupDebugArtifacts, redact };

@@ -6,7 +6,10 @@ const { isBusinessDay, getNextBusinessDay } = require('../business-days');
 /**
  * Page 3: Fill payment details (date, código, competência, salário) and confirm.
  */
+const MIN_WAGE_FALLBACK = 1518; // 2025 Brazilian minimum wage (BRL)
+
 async function navigatePage3(page, config) {
+    const start = Date.now();
     // Wait for Page 3 to render
     try {
         await page.waitForFunction(() => {
@@ -105,11 +108,24 @@ async function navigatePage3(page, config) {
 
     // 3. Fetch minimum wage and fill the modal
     logger.info('Fetching minimum wage...');
-    const bcbRes = await axios.get(config.minWageApiUrl);
-    const minWageRaw = bcbRes.data[0].valor;
-    const minWageNum = parseFloat(minWageRaw);
+    let minWageNum;
+    try {
+        const bcbRes = await axios.get(config.minWageApiUrl);
+        minWageNum = parseFloat(bcbRes.data[0].valor);
+        logger.debug(`Minimum wage fetched: ${bcbRes.data[0].valor} -> ${minWageNum}`);
+    } catch (firstErr) {
+        logger.warn(`BCB API call failed: ${firstErr.message}. Retrying once...`);
+        try {
+            const bcbRes = await axios.get(config.minWageApiUrl);
+            minWageNum = parseFloat(bcbRes.data[0].valor);
+            logger.debug(`Minimum wage fetched on retry: ${bcbRes.data[0].valor} -> ${minWageNum}`);
+        } catch (retryErr) {
+            logger.warn(`BCB API retry failed: ${retryErr.message}. Using fallback minimum wage: ${MIN_WAGE_FALLBACK}`);
+            minWageNum = MIN_WAGE_FALLBACK;
+        }
+    }
     const minWageInputString = (Math.round(minWageNum * 100)).toString();
-    logger.debug(`Minimum wage fetched: ${minWageRaw} -> formatted for input: ${minWageInputString}`);
+    logger.debug(`Minimum wage for input: ${minWageInputString}`);
 
     // Click "+ Adicionar"
     logger.debug('Clicking "+ Adicionar"...');
@@ -183,7 +199,7 @@ async function navigatePage3(page, config) {
         throw new Error(`RFB Validation Error: ${errorMessage}`);
     }
 
-    logger.info('Page 3 flow complete! Waiting for Page 4 to load...');
+    logger.info(`Page 3 complete in ${Date.now() - start}ms. Waiting for Page 4 to load...`);
 }
 
 module.exports = navigatePage3;

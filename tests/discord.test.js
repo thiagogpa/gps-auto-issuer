@@ -1,10 +1,17 @@
 jest.mock('axios');
 jest.mock('fs');
 jest.mock('form-data');
+jest.mock('../src/logger', () => ({
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+}));
 
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const logger = require('../src/logger');
 const { sendDiscordNotification, sendDiscordWarning, sendDiscordStartup } = require('../src/notifications/discord');
 
 const fullSummary = {
@@ -112,19 +119,16 @@ describe('sendDiscordNotification()', () => {
     });
 
     test('logs error but does not throw when Axios fails', async () => {
-        const mockError = jest.spyOn(console, 'error').mockImplementation(() => { });
+        logger.error.mockClear();
         axios.post.mockRejectedValue(new Error('Network error'));
 
         await expect(
             sendDiscordNotification('https://discord.com/api/webhooks/test', fullSummary)
         ).resolves.toBeUndefined(); // should not throw
 
-        expect(mockError).toHaveBeenCalledWith(
-            expect.stringContaining('Failed to send Discord notification'),
-            expect.any(String)
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to send Discord notification')
         );
-
-        mockError.mockRestore();
     });
 });
 
@@ -219,18 +223,15 @@ describe('sendDiscordWarning()', () => {
     });
 
     test('logs error but does not throw when Axios fails', async () => {
-        const mockError = jest.spyOn(console, 'error').mockImplementation(() => { });
+        logger.error.mockClear();
         axios.post.mockRejectedValue(new Error('Network error'));
 
         await expect(
             sendDiscordWarning('https://discord.com/api/webhooks/test', 'Title', 'Desc')
         ).resolves.toBeUndefined();
 
-        expect(mockError).toHaveBeenCalledWith(
-            expect.stringContaining('Failed to send Discord warning'),
-            expect.any(String)
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to send Discord warning')
         );
-
-        mockError.mockRestore();
     });
 });

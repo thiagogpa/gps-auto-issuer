@@ -17,6 +17,7 @@ function todayStr() {
  * @returns {Promise<object>} The extracted summary data
  */
 async function navigatePage5(page, config) {
+    const start = Date.now();
     logger.info('Waiting for URL/Page transition to Page 5 (Boleto Summary)...');
     try {
         await page.waitForFunction(() => {
@@ -64,6 +65,11 @@ async function navigatePage5(page, config) {
 
     logger.debug('Summary data: ' + JSON.stringify(summaryData));
 
+    if (!summaryData.barcode || !summaryData.total) {
+        throw new Error(`Page 5: Critical fields missing — barcode: ${summaryData.barcode ?? 'null'}, total: ${summaryData.total ?? 'null'}`);
+    }
+
+    logger.info(`Page 5 complete in ${Date.now() - start}ms`);
     return summaryData;
 }
 

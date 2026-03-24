@@ -33,6 +33,79 @@ describe('page4-emissao date formatting', () => {
     });
 });
 
+describe('navigatePage4 PDF popup timeout', () => {
+    beforeEach(() => {
+        jest.resetModules();
+        jest.useFakeTimers();
+
+        jest.mock('fs', () => ({
+            existsSync: jest.fn().mockReturnValue(true),
+            mkdirSync: jest.fn(),
+            writeFileSync: jest.fn(),
+        }));
+        jest.mock('../../src/helpers', () => ({
+            delay: jest.fn().mockResolvedValue(),
+            saveDebug: jest.fn().mockResolvedValue(),
+            extractSiteKey: jest.fn().mockResolvedValue('fake-site-key'),
+        }));
+        jest.mock('../../src/captcha', () => ({
+            requestCapsolverToken: jest.fn().mockResolvedValue('mock-token'),
+            injectCaptchaToken: jest.fn().mockResolvedValue(),
+        }));
+        jest.mock('../../src/logger', () => ({
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+        }));
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
+    test('returns null and logs warning when popup does not open within timeout', async () => {
+        const navigatePage4 = require('../../src/pages/page4-emissao');
+        const mockLogger = require('../../src/logger');
+
+        const mockPage = {
+            target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue({ send: jest.fn() }) }),
+            on: jest.fn(),
+            off: jest.fn(),
+            waitForFunction: jest.fn().mockResolvedValue(true),
+            evaluate: jest.fn().mockImplementation((fn) => {
+                const fnStr = fn.toString();
+                if (fnStr.includes('!el')) return false;
+                if (fnStr.includes('hasAttribute') && fnStr.includes('disabled')) return false;
+                return undefined;
+            }),
+            evaluateHandle: jest.fn().mockResolvedValue({ _isMockBtn: true, click: jest.fn() }),
+            url: jest.fn().mockReturnValue('https://dummy.com'),
+        };
+
+        const mockBrowser = {
+            on: jest.fn(),
+            off: jest.fn(),
+            // once never fires — simulates popup timeout
+            once: jest.fn(),
+        };
+
+        const mockConfig = { debug: false, capsolverKey: 'test-key', dryRun: false };
+
+        const resultPromise = navigatePage4(mockPage, mockBrowser, mockConfig);
+
+        // Run all pending timers (including the 30s popup timeout) and flush microtasks
+        await jest.runAllTimersAsync();
+
+        const result = await resultPromise;
+
+        expect(result).toBeNull();
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('Could not capture boleto popup')
+        );
+    });
+});
+
 describe('navigatePage4 DOM selection', () => {
     test('uses page.evaluateHandle to natively locate the Emitir GPS button', async () => {
         jest.mock('fs', () => ({
@@ -65,6 +138,7 @@ describe('navigatePage4 DOM selection', () => {
         const mockPage = {
             target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue({ send: jest.fn() }) }),
             on: jest.fn(),
+            off: jest.fn(),
             waitForFunction: jest.fn().mockResolvedValue(true),
             evaluate: jest.fn().mockImplementation((fn, ...args) => {
                 const fnStr = fn.toString();
@@ -80,6 +154,7 @@ describe('navigatePage4 DOM selection', () => {
 
         const mockBrowser = {
             on: jest.fn(),
+            off: jest.fn(),
             once: jest.fn((evt, cb) => {
                 if (evt === 'targetcreated') {
                     cb({

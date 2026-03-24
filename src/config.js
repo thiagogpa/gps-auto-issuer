@@ -61,6 +61,12 @@ if (!config.pis) {
     process.exit(1);
 }
 
+const pisDigits = config.pis.replace(/\D/g, '');
+if (pisDigits.length !== 11) {
+    logger.error(`Invalid PIS format: must be 11 digits after stripping non-digits (got ${pisDigits.length}).`);
+    process.exit(1);
+}
+
 // WIT_AI_TOKEN is optional — audio CAPTCHA tier will be skipped if not provided
 if (!config.witAiToken) {
     logger.warn('WIT_AI_TOKEN not provided. Audio CAPTCHA tier (Tier 2) will be skipped.');

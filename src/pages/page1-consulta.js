@@ -7,6 +7,7 @@ const logger = require('../logger');
  * After this, the page transitions to a confirmation modal or Page 2.
  */
 async function navigatePage1(page, browser, config) {
+    const start = Date.now();
     logger.debug('Page loaded. Simulating human delay before selecting category...');
     await page.waitForSelector(`label[for="${config.categoria}"]`);
     await page.click(`label[for="${config.categoria}"]`);
@@ -54,23 +55,43 @@ async function navigatePage1(page, browser, config) {
 
     await solveCaptcha(page, config, siteKey, config.url);
 
+    // Wait for Consultar button to become enabled (CAPTCHA must be registered by Angular)
+    // br-button uses the HTML `disabled` attribute, not the .disabled property
+    logger.debug('Waiting for Consultar button to become enabled...');
+    try {
+        await page.waitForFunction(() => {
+            const buttons = Array.from(document.querySelectorAll('br-button[primary]'));
+            const btn = buttons.find(b => b.textContent.trim() === 'Consultar');
+            return btn && !btn.hasAttribute('disabled');
+        }, { timeout: 8000 });
+        logger.info('Consultar button is enabled. CAPTCHA accepted by form.');
+    } catch {
+        logger.warn('Consultar button did not become enabled after CAPTCHA solve — attempting click anyway.');
+    }
+
     // Click Consultar
     logger.info('Proceeding to Page Navigation...');
     logger.debug('Waiting before clicking "Consultar"...');
     await delay(1000, 2500);
 
-    await page.evaluate(() => {
+    const clickResult = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('br-button[primary]'));
         const consultarBtn = buttons.find(b => b.textContent.trim() === 'Consultar');
-        if (consultarBtn && !consultarBtn.disabled) {
-            const innerBtn = consultarBtn.shadowRoot ? consultarBtn.shadowRoot.querySelector('button') : consultarBtn;
+        if (!consultarBtn) return { found: false };
+        const isDisabled = consultarBtn.hasAttribute('disabled');
+        const innerBtn = consultarBtn.shadowRoot ? consultarBtn.shadowRoot.querySelector('button') : consultarBtn;
+        const innerDisabled = innerBtn ? innerBtn.disabled : null;
+        if (!isDisabled) {
             if (innerBtn) innerBtn.click();
             else consultarBtn.click();
+            return { found: true, isDisabled, innerDisabled, action: 'clicked' };
         } else {
             const form = document.querySelector('form');
             if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            return { found: true, isDisabled, innerDisabled, action: 'form-submit-fallback' };
         }
     });
+    logger.debug(`Consultar click result: ${JSON.stringify(clickResult)}`);
 
     await delay(1000, 2000);
 
@@ -107,7 +128,7 @@ async function navigatePage1(page, browser, config) {
         logger.debug('No confirmation modal detected or timed out waiting for it.');
     }
 
-    logger.info('Clicked "Consultar". Waiting for the next phase...');
+    logger.info(`Page 1 complete in ${Date.now() - start}ms. Waiting for the next phase...`);
 }
 
 module.exports = navigatePage1;

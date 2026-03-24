@@ -19,6 +19,7 @@ function todayStr() {
  * @returns {Promise<string|null>} Path to saved PDF, or null on failure
  */
 async function navigatePage4(page, browser, config) {
+    const start = Date.now();
     const downloadPath = path.join(process.cwd(), 'output');
     if (!fs.existsSync(downloadPath)) {
         fs.mkdirSync(downloadPath, { recursive: true });
@@ -32,7 +33,7 @@ async function navigatePage4(page, browser, config) {
         downloadPath: downloadPath
     });
 
-    browser.on('targetcreated', async target => {
+    const targetCreatedListener = async target => {
         if (target.type() === 'page') {
             try {
                 const newPage = await target.page();
@@ -46,10 +47,11 @@ async function navigatePage4(page, browser, config) {
                 logger.warn('Error configuring new tab CDP session: ' + e.message);
             }
         }
-    });
+    };
+    browser.on('targetcreated', targetCreatedListener);
 
     // Intercept PDF responses
-    page.on('response', async (response) => {
+    const responseListener = async (response) => {
         const contentType = response.headers()['content-type'] || '';
         const contentDisposition = response.headers()['content-disposition'] || '';
         if (contentType.includes('application/pdf') || (contentDisposition.includes('attachment') && contentDisposition.includes('.pdf'))) {
@@ -63,7 +65,8 @@ async function navigatePage4(page, browser, config) {
                 logger.warn('Error saving intercepted PDF: ' + e.message);
             }
         }
-    });
+    };
+    page.on('response', responseListener);
 
     logger.debug('Configured Puppeteer headless download settings.');
 
@@ -156,15 +159,17 @@ async function navigatePage4(page, browser, config) {
 
             // First click to trigger Angular flow
             logger.debug('Clicking "Emitir GPS" button to trigger Angular flow and CAPTCHA challenge...');
-            for (let i = 0; i < 20; i++) {
-                const isDisabled = await page.evaluate(el => el.hasAttribute('disabled') || el.disabled, emitirBtn);
-                if (!isDisabled) {
-                    await emitirBtn.click();
-                    logger.debug('Clicked "Emitir GPS" button natively.');
-                    break;
-                }
-                await delay(500, 500);
+            try {
+                await page.waitForFunction(
+                    el => !el.hasAttribute('disabled') && !el.disabled,
+                    { timeout: 10000 },
+                    emitirBtn
+                );
+            } catch {
+                logger.warn('"Emitir GPS" button not enabled within timeout.');
             }
+            await emitirBtn.click();
+            logger.debug('Clicked "Emitir GPS" button natively.');
 
             logger.debug('Waiting for visual CAPTCHA iframe to initialize...');
             await delay(1500, 2500);
@@ -199,15 +204,17 @@ async function navigatePage4(page, browser, config) {
         }
     } else {
         logger.warn('No CapSolver key. Clicking "Emitir GPS" natively as fallback...');
-        for (let i = 0; i < 20; i++) {
-            const isDisabled = await page.evaluate(el => el.hasAttribute('disabled') || el.disabled, emitirBtn);
-            if (!isDisabled) {
-                await emitirBtn.click();
-                logger.debug('Clicked "Emitir GPS" button natively.');
-                break;
-            }
-            await delay(500, 500);
+        try {
+            await page.waitForFunction(
+                el => !el.hasAttribute('disabled') && !el.disabled,
+                { timeout: 10000 },
+                emitirBtn
+            );
+        } catch {
+            logger.warn('"Emitir GPS" button not enabled within timeout.');
         }
+        await emitirBtn.click();
+        logger.debug('Clicked "Emitir GPS" button natively.');
     }
 
     // Capture the boleto popup and download the PDF
@@ -242,8 +249,12 @@ async function navigatePage4(page, browser, config) {
     } catch (e) {
         logger.warn(`Could not capture boleto popup: ${e.message}`);
         await saveDebug(page, 'page5_fallback.png', 'screenshot', config.debug);
+    } finally {
+        page.off('response', responseListener);
+        browser.off('targetcreated', targetCreatedListener);
     }
 
+    logger.info(`Page 4 complete in ${Date.now() - start}ms`);
     return pdfPath;
 }
 

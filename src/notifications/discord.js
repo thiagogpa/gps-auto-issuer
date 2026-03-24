@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const logger = require('../logger');
 
 /**
  * Send a boleto summary to a Discord channel via webhook.
@@ -10,7 +11,7 @@ const FormData = require('form-data');
  */
 async function sendDiscordNotification(webhookUrl, summary, pdfPath = null) {
     if (!webhookUrl) {
-        console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord notification.');
+        logger.info('DISCORD_WEBHOOK_URL not set. Skipping Discord notification.');
         return;
     }
 
@@ -43,9 +44,9 @@ async function sendDiscordNotification(webhookUrl, summary, pdfPath = null) {
                 embeds: [embed]
             });
         }
-        console.log('Discord notification sent successfully!');
+        logger.info('Discord notification sent successfully!');
     } catch (err) {
-        console.error('Failed to send Discord notification:', err.message);
+        logger.error(`Failed to send Discord notification: ${err.message}`);
     }
 }
 
@@ -58,7 +59,7 @@ async function sendDiscordNotification(webhookUrl, summary, pdfPath = null) {
  */
 async function sendDiscordWarning(webhookUrl, title, description) {
     if (!webhookUrl) {
-        console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord warning.');
+        logger.info('DISCORD_WEBHOOK_URL not set. Skipping Discord warning.');
         return;
     }
 
@@ -74,9 +75,9 @@ async function sendDiscordWarning(webhookUrl, title, description) {
         await axios.post(webhookUrl, {
             embeds: [embed]
         });
-        console.log('Discord warning sent successfully!');
+        logger.info('Discord warning sent successfully!');
     } catch (err) {
-        console.error('Failed to send Discord warning:', err.message);
+        logger.error(`Failed to send Discord warning: ${err.message}`);
     }
 }
 
@@ -88,7 +89,7 @@ async function sendDiscordWarning(webhookUrl, title, description) {
  */
 async function sendDiscordStartup(webhookUrl, nextRunStr) {
     if (!webhookUrl) {
-        console.log('DISCORD_WEBHOOK_URL not set. Skipping Discord startup notification.');
+        logger.info('DISCORD_WEBHOOK_URL not set. Skipping Discord startup notification.');
         return;
     }
 
@@ -116,9 +117,9 @@ async function sendDiscordStartup(webhookUrl, nextRunStr) {
 
     try {
         await axios.post(webhookUrl, { embeds: [embed] });
-        console.log('Discord startup notification sent successfully!');
+        logger.info('Discord startup notification sent successfully!');
     } catch (err) {
-        console.error('Failed to send Discord startup notification:', err.message);
+        logger.error(`Failed to send Discord startup notification: ${err.message}`);
     }
 }
 

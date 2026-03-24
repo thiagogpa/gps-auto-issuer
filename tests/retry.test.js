@@ -128,11 +128,8 @@ describe('runWithRetry()', () => {
 
         const promise = runWithRetry(1, 5); // 5 minute delay
 
-        // Advance timers until all pending timers have been flushed
-        for (let i = 0; i < 10; i++) {
-            jest.advanceTimersByTime(5 * 60 * 1000);
-            await Promise.resolve(); // flush microtask queue
-        }
+        // Run all pending timers (including the 5-minute retry delay) and flush microtasks
+        await jest.runAllTimersAsync();
 
         await promise;
 

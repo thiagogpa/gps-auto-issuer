@@ -13,6 +13,16 @@ class CaptchaFailedError extends Error {
 }
 
 /**
+ * Custom error thrown when Google has flagged the IP and blocked CAPTCHA solving.
+ */
+class IpBlockedError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'IpBlockedError';
+    }
+}
+
+/**
  * 3-Tier Waterfall CAPTCHA Solver.
  * Tier 1: Stealth checkbox click
  * Tier 2: Audio challenge via Wit.ai
@@ -137,6 +147,9 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
                 logger.warn('Secondary challenge iframe not found. Skipping Tier 2.');
             }
         } catch (err) {
+            if (err.message.startsWith('AUDIO_BLOCKED')) {
+                throw new IpBlockedError('IP flagged by Google reCAPTCHA — CAPTCHA challenges are blocked for this IP. Manual intervention required.');
+            }
             logger.info(`FAIL: Tier 2 (Audio) failed. Reason: ${err.message}`);
         }
     } else if (!solved && !config.witAiToken) {
@@ -152,7 +165,7 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
             if (!siteKey) throw new Error('Cannot proceed: SiteKey was not extracted.');
 
             const token = await requestCapsolverToken(config, siteKey, pageUrl);
-            logger.debug(`Token acquired (${token.substring(0, 30)}...). Injecting into DOM...`);
+            logger.debug(`Token acquired (${token.substring(0, 8)}...). Injecting into DOM...`);
 
             await injectCaptchaToken(page, token);
 
@@ -206,8 +219,11 @@ async function requestCapsolverToken(config, siteKey, pageUrl) {
             logger.debug(`Task created. ID: ${taskId}. Polling for solution...`);
 
             const pollLimit = config.capsolverPollLimit || 40;
+            let pollDelay = 2000;
+            const MAX_POLL_DELAY = 10000;
             for (let i = 0; i < pollLimit; i++) {
-                await delay(2000, 2000);
+                await delay(pollDelay, pollDelay);
+                pollDelay = Math.min(Math.floor(pollDelay * 1.5), MAX_POLL_DELAY);
                 const resultRes = await axios.post('https://api.capsolver.com/getTaskResult', {
                     clientKey: config.capsolverKey,
                     taskId: taskId
@@ -241,53 +257,42 @@ async function injectCaptchaToken(page, token) {
     await page.evaluate((recaptchaToken) => {
         const textarea = document.getElementById("g-recaptcha-response");
         if (textarea) {
-            textarea.innerHTML = recaptchaToken;
-            textarea.value = recaptchaToken;
+            // Use the native setter so Angular/React change detection picks it up
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+            if (nativeSetter && nativeSetter.set) {
+                nativeSetter.set.call(textarea, recaptchaToken);
+            } else {
+                textarea.innerHTML = recaptchaToken;
+                textarea.value = recaptchaToken;
+            }
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            textarea.dispatchEvent(new Event('change', { bubbles: true }));
         }
 
         try {
-            const findRecaptchaClient = () => {
-                if (typeof (___grecaptcha_cfg) !== 'undefined') {
-                    return Object.entries(___grecaptcha_cfg.clients).map(([cid, client]) => {
-                        const data = { id: cid };
-                        const objects = Object.entries(client).filter(([_, value]) => value && typeof value === 'object');
-                        objects.forEach(([toplevelKey, toplevel]) => {
-                            const found = Object.entries(toplevel).find(([_, value]) => (
-                                value && typeof value === 'object' && 'sitekey' in value && 'size' in value
-                            ));
-                            if (found) {
-                                const callback = found[1]['callback'];
-                                if (callback) data.function = callback;
-                            }
-                        });
-                        return data;
-                    });
+            // Search for and call all reCAPTCHA callbacks up to 4 levels deep
+            const tryCallCallbacks = (obj, depth) => {
+                if (depth > 4 || !obj || typeof obj !== 'object') return;
+                if (typeof obj.callback === 'function') {
+                    try { obj.callback(recaptchaToken); } catch { }
                 }
-                return [];
-            };
-
-            const clientsInfo = findRecaptchaClient();
-            if (clientsInfo.length > 0 && clientsInfo[0].function) {
-                clientsInfo[0].function(recaptchaToken);
-            } else {
-                const searchObjForCallback = (obj, depth) => {
-                    if (depth > 6 || !obj) return false;
-                    for (let key in obj) {
-                        if (typeof obj[key] === 'function' && key.toLowerCase().includes('callback')) {
-                            try { obj[key](recaptchaToken); return true; } catch { }
-                        }
-                        if (typeof obj[key] === 'object' && obj[key] !== null) {
-                            if (searchObjForCallback(obj[key], depth + 1)) return true;
-                        }
+                for (const key of Object.keys(obj)) {
+                    if (typeof obj[key] === 'function' && key.toLowerCase().includes('callback')) {
+                        try { obj[key](recaptchaToken); } catch { }
+                    } else if (obj[key] && typeof obj[key] === 'object') {
+                        tryCallCallbacks(obj[key], depth + 1);
                     }
-                    return false;
-                };
-                if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {
-                    searchObjForCallback(window.___grecaptcha_cfg.clients, 0);
+                }
+            };
+            if (typeof ___grecaptcha_cfg !== 'undefined' && ___grecaptcha_cfg.clients) {
+                for (const clientId of Object.keys(___grecaptcha_cfg.clients)) {
+                    tryCallCallbacks(___grecaptcha_cfg.clients[clientId], 0);
                 }
             }
-        } catch { }
+        } catch (e) {
+            // Callback search is best-effort; token is already set in textarea
+        }
     }, token);
 }
 
-module.exports = { solveCaptcha, requestCapsolverToken, injectCaptchaToken, CaptchaFailedError };
+module.exports = { solveCaptcha, requestCapsolverToken, injectCaptchaToken, CaptchaFailedError, IpBlockedError };

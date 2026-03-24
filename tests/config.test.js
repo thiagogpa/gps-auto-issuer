@@ -55,7 +55,7 @@ describe('config', () => {
         for (const val of testCases) {
             jest.resetModules();
             jest.mock('dotenv', () => ({ config: jest.fn() }));
-            process.env = { PIS: '123', WIT_AI_TOKEN: 'x', CAPSOLVER_API_KEY: 'x' };
+            process.env = { PIS: '12345678901', WIT_AI_TOKEN: 'x', CAPSOLVER_API_KEY: 'x' };
             if (val !== undefined) {
                 process.env.DEBUG = val;
             }
@@ -220,6 +220,34 @@ describe('config', () => {
         expect(mockExit).toHaveBeenCalledWith(1);
 
         mockExit.mockRestore();
+    });
+
+    // ─── PIS format validation ──────────────────────────────────────
+
+    test('calls process.exit(1) when PIS has fewer than 11 digits', () => {
+        process.env.PIS = '12345'; // only 5 digits
+        const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+            throw new Error('process.exit called');
+        });
+        expect(() => loadConfig()).toThrow('process.exit called');
+        expect(mockExit).toHaveBeenCalledWith(1);
+        mockExit.mockRestore();
+    });
+
+    test('calls process.exit(1) when PIS has more than 11 digits', () => {
+        process.env.PIS = '123456789012'; // 12 digits
+        const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {
+            throw new Error('process.exit called');
+        });
+        expect(() => loadConfig()).toThrow('process.exit called');
+        expect(mockExit).toHaveBeenCalledWith(1);
+        mockExit.mockRestore();
+    });
+
+    test('accepts PIS with formatting chars that strip to exactly 11 digits', () => {
+        process.env.PIS = '123.45678.90-1'; // 11 digits with mask characters
+        const config = loadConfig();
+        expect(config.pis).toBe('123.45678.90-1'); // stored as-is from env
     });
 
     test('logs a warning (not exit) when WIT_AI_TOKEN is missing', () => {
