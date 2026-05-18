@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { delay, focusInputByLabel, clickBrButton, saveDebug } = require('../helpers');
 const logger = require('../logger');
+const { isBusinessDay, getNextBusinessDay } = require('../business-days');
 
 /**
  * Page 3: Fill payment details (date, código, competência, salário) and confirm.
@@ -26,16 +27,13 @@ async function navigatePage3(page, config) {
 
     logger.debug('Searching for "Data do Pagamento" and "Código de Pagamento"...');
 
-    // 1. Fill Data do Pagamento — set to next valid weekday (no weekends)
-    logger.debug('Setting "Data do Pagamento" to next valid weekday...');
+    // 1. Fill Data do Pagamento — set to next valid business day (no weekends or SP holidays)
+    logger.debug('Setting "Data do Pagamento" to next valid business day...');
     const paymentDate = new Date();
-    const originalMonth = paymentDate.getMonth();
 
-    if (paymentDate.getDay() === 6) paymentDate.setDate(paymentDate.getDate() + 2); // Saturday -> Monday
-    else if (paymentDate.getDay() === 0) paymentDate.setDate(paymentDate.getDate() + 1); // Sunday -> Monday
-
-    // If pushing to Monday changed the month, it will trigger an impossible validation on RFB's end
-    // (Mês/Ano deve ser o mesmo da data de cálculo). We'll attempt it anyway and capture the clear error.
+    if (!isBusinessDay(paymentDate)) {
+        paymentDate.setTime(getNextBusinessDay(paymentDate).getTime());
+    }
 
     const paymentDateStr = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}-${String(paymentDate.getDate()).padStart(2, '0')}`;
 
