@@ -7,6 +7,7 @@ const path = require('path');
 const config = require('./config');
 const logger = require('./logger');
 const { CaptchaFailedError } = require('./captcha');
+const { isBusinessDay, getNextBusinessDay } = require('./business-days');
 
 // Page modules
 const navigatePage1 = require('./pages/page1-consulta');
@@ -47,6 +48,36 @@ function getNextRunString(cronSchedule) {
     } catch {
         return null;
     }
+}
+
+/**
+ * If the current date is not a business day in São Paulo, sleep until the
+ * same HH:MM on the next business day, then return. This ensures the cron
+ * job never emits a boleto dated on a weekend or holiday.
+ */
+async function waitUntilBusinessDay() {
+    const now = new Date();
+    if (isBusinessDay(now)) return;
+
+    const next = getNextBusinessDay(now);
+    next.setHours(now.getHours(), now.getMinutes(), 0, 0);
+    const waitMs = next.getTime() - now.getTime();
+
+    const formatted = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    }).format(next).replace(',', '');
+
+    logger.info(`Today is not a business day in São Paulo. Postponing execution to ${formatted}...`);
+    await sendDiscordWarning(
+        config.discordWebhookUrl,
+        'GPS Automation Postponed',
+        `Scheduled day is not a business day. Execution postponed to ${formatted}.`
+    );
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    logger.info('Business day reached. Starting execution...');
 }
 
 async function runAutomation() {
@@ -179,6 +210,8 @@ async function runWithRetry(maxAttempts, delayMinutes) {
 
     const nextRunStr = getNextRunString(config.cronSchedule);
     await sendDiscordStartup(config.discordWebhookUrl, nextRunStr);
+
+    await waitUntilBusinessDay();
 
     await runWithRetry(config.processRetryAttempts, config.processRetryDelayMinutes);
     logger.info('--- GPS Automation Process Completed ---');
