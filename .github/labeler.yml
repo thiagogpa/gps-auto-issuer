@@ -1,0 +1,21 @@
+area:tests:
+  - changed-files:
+    - any-glob-to-any-file: 'tests/**/*'
+    - any-glob-to-any-file: 'jest.config.js'
+
+area:src:
+  - changed-files:
+    - any-glob-to-any-file: 'src/**/*'
+
+area:pages:
+  - changed-files:
+    - any-glob-to-any-file: 'src/pages/**/*'
+
+area:ci-cd:
+  - changed-files:
+    - any-glob-to-any-file: '.github/**/*'
+
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file: 'package.json'
+    - any-glob-to-any-file: 'package-lock.json'
