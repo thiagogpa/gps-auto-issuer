@@ -15,4 +15,5 @@ jobs:
       - name: Socket Security Scan
         uses: SocketDev/action@v1
         with:
-          api-key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+          mode: firewall-free
+          socket-token: ${{ secrets.SOCKET_SECURITY_API_KEY }}
