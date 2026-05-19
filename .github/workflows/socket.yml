@@ -13,6 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Socket Security Scan
-        uses: socketdotdev/socket-github-action@v2
+        uses: SocketDev/action@v1
         with:
           api-key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
