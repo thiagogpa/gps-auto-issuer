@@ -14,3 +14,4 @@ output/*
 !jest.config.js
 !.github/renovate.json
 coverage/
+docs/
