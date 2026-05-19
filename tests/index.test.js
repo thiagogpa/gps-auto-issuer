@@ -53,6 +53,77 @@ function makeMockBrowser(page) {
     };
 }
 
+// ─── Feature: FORCE_RUN skips business day guard ─────────────────────
+
+describe('waitUntilBusinessDay() — forceRun', () => {
+    beforeEach(() => {
+        jest.resetModules();
+        jest.useFakeTimers();
+        jest.mock('puppeteer-extra', () => ({
+            use: jest.fn(),
+            launch: jest.fn().mockResolvedValue({
+                newPage: jest.fn().mockResolvedValue({
+                    setViewport: jest.fn().mockResolvedValue(undefined),
+                    goto: jest.fn().mockResolvedValue(undefined),
+                    screenshot: jest.fn().mockResolvedValue(undefined),
+                    content: jest.fn().mockResolvedValue('<html></html>'),
+                }),
+                close: jest.fn().mockResolvedValue(undefined),
+            }),
+        }));
+        jest.mock('puppeteer-extra-plugin-stealth', () => jest.fn().mockReturnValue({}));
+        jest.mock('../src/pages/page1-consulta', () => jest.fn().mockResolvedValue(undefined));
+        jest.mock('../src/pages/page2-confirmacao', () => jest.fn().mockResolvedValue(undefined));
+        jest.mock('../src/pages/page3-pagamento', () => jest.fn().mockResolvedValue(undefined));
+        jest.mock('../src/pages/page4-emissao', () => jest.fn().mockResolvedValue(null));
+        jest.mock('../src/pages/page5-resumo', () => jest.fn().mockResolvedValue({}));
+        jest.mock('../src/notifications/discord', () => ({
+            sendDiscordNotification: jest.fn().mockResolvedValue(undefined),
+            sendDiscordWarning: jest.fn().mockResolvedValue(undefined),
+            sendDiscordStartup: jest.fn().mockResolvedValue(undefined),
+        }));
+        jest.mock('../src/business-days', () => ({
+            isBusinessDay: jest.fn().mockReturnValue(false),
+            getNextBusinessDay: jest.fn().mockReturnValue(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+        }));
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
+
+    test('returns immediately without a postpone warning when forceRun is true', async () => {
+        jest.mock('../src/config', () => ({
+            url: 'https://example.com',
+            pis: '123',
+            savePdf: false,
+            saveJson: false,
+            debug: false,
+            dryRun: false,
+            forceRun: true,
+            discordWebhookUrl: 'https://discord.example.com',
+            cronSchedule: '',
+            processRetryAttempts: 0,
+            processRetryDelayMinutes: 0,
+        }));
+
+        const { waitUntilBusinessDay } = require('../src/index');
+        expect(waitUntilBusinessDay).toBeDefined();
+
+        const { sendDiscordWarning } = require('../src/notifications/discord');
+        jest.clearAllMocks();
+
+        await waitUntilBusinessDay();
+
+        expect(sendDiscordWarning).not.toHaveBeenCalledWith(
+            expect.anything(),
+            'GPS Automation Postponed',
+            expect.anything()
+        );
+    }, 3000);
+});
+
 // ─── Feature 9: output dir created at startup ────────────────────────
 
 describe('runAutomation() — output dir creation', () => {

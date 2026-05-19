@@ -183,6 +183,19 @@ describe('config', () => {
         expect(config.dryRun).toBe(true);
     });
 
+    // ─── forceRun ────────────────────────────────────────────────────
+
+    test('forceRun defaults to false when FORCE_RUN env var is not set', () => {
+        const config = loadConfig();
+        expect(config.forceRun).toBe(false);
+    });
+
+    test('forceRun is true when FORCE_RUN=true', () => {
+        process.env.FORCE_RUN = 'true';
+        const config = loadConfig();
+        expect(config.forceRun).toBe(true);
+    });
+
     // ─── API key validation ─────────────────────────────────────────
 
     test('calls process.exit(1) when PIS is missing', () => {

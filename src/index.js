@@ -56,6 +56,7 @@ function getNextRunString(cronSchedule) {
  * job never emits a boleto dated on a weekend or holiday.
  */
 async function waitUntilBusinessDay() {
+    if (config.forceRun) return;
     const now = new Date();
     if (isBusinessDay(now)) return;
 
@@ -223,4 +224,4 @@ async function runWithRetry(maxAttempts, delayMinutes) {
     }
 })();
 
-module.exports = { runAutomation, runWithRetry };
+module.exports = { runAutomation, runWithRetry, waitUntilBusinessDay };

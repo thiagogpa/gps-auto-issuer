@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm start                         # Run automation locally
+npm run debug                     # Run with DEBUG=true and LOG_LEVEL=debug
 npm test                          # Run all Jest tests (verbose)
 npx jest tests/captcha.test.js    # Run a single test file
 npx jest --coverage               # Run tests with coverage report
@@ -17,7 +18,7 @@ docker compose up --build           # Start scheduled worker (cron)
 docker compose run --rm gps-worker  # Run automation once in container
 ```
 
-**Environment**: Copy `.env.example` to `.env`. Required vars: `PIS`, `CAPSOLVER_API_KEY`.
+**Environment**: Copy `.env.example` to `.env`. Required vars: `PIS`, `CAPSOLVER_API_KEY`. Optional: `WIT_AI_TOKEN` (enables Tier 2 audio CAPTCHA), `DISCORD_WEBHOOK_URL`, `DRY_RUN=true` (skips final "Emitir GPS" click).
 
 ## Architecture
 
@@ -27,7 +28,12 @@ This is a headless Puppeteer automation that navigates a 5-page government form 
 
 `src/index.js` → `runWithRetry()` → `runAutomation()` → pages 1–5 in sequence → Discord notification
 
-`src/index.js` is the orchestrator. It launches Chromium, drives the page sequence, and wraps everything in retry logic. Retries only trigger on `CaptchaFailedError`; other errors fail immediately.
+`src/index.js` is the orchestrator. It forces `TZ=America/Sao_Paulo` at process start, launches Chromium, drives the page sequence, and wraps everything in two independent retry layers:
+
+- **CAPTCHA-level retries** (`CAPTCHA_RETRY_ATTEMPTS`): immediate re-attempts within `solveCaptcha()` before declaring failure
+- **Process-level retries** (`PROCESS_RETRY_ATTEMPTS`, `PROCESS_RETRY_DELAY_MINUTES`): full end-to-end restart triggered only on `CaptchaFailedError`; all other errors fail immediately
+
+On any error, `error_screenshot.png` and `error_dump.html` are saved to `output/` before re-throwing.
 
 ### Page Object Model (`src/pages/`)
 
@@ -50,10 +56,11 @@ Each RFB form step is its own module:
 | File | Role |
 |------|------|
 | `src/config.js` | Loads `.env`, validates required keys, exports typed config object |
-| `src/helpers.js` | `delay()`, `clickBrButton()`, `extractSiteKey()`, `saveDebug()` — shared utilities |
+| `src/helpers.js` | `delay()`, `clickBrButton()`, `focusInputByLabel()`, `extractSiteKey()`, `saveDebug()`, `cleanupDebugArtifacts()` |
+| `src/business-days.js` | `isBusinessDay()` / `getNextBusinessDay()` using `date-holidays` (BR, SP) — used by index.js and page3 |
 | `src/logger.js` | Winston logger; optional file output to `logs/gps.log` |
 | `src/log-schedule.js` | Used by Docker scheduler to log next cron run at startup |
-| `src/notifications/discord.js` | `sendDiscordNotification()` / `sendDiscordWarning()` via webhook |
+| `src/notifications/discord.js` | `sendDiscordNotification()` / `sendDiscordWarning()` / `sendDiscordStartup()` via webhook |
 
 ### Shadow DOM Handling
 

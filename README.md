@@ -76,6 +76,7 @@ src/
 | `CAPTCHA_RETRY_ATTEMPTS` | No | `2` | Immediate retries within CAPTCHA solving when a tier fails. |
 | `PROCESS_RETRY_ATTEMPTS` | No | `2` | Full end-to-end process retries when CAPTCHA solving fails entirely. |
 | `PROCESS_RETRY_DELAY_MINUTES` | No | `5` | Minutes to wait before retrying the whole process (0 = immediate). |
+| `FORCE_RUN` | No | `false` | Set to `true` to bypass the business day guard and run immediately, even on weekends or São Paulo holidays. |
 
 > [!IMPORTANT]
 > `PIS` and `CAPSOLVER_API_KEY` are required — the script will exit immediately if either is missing.
@@ -88,6 +89,16 @@ src/
 ```bash
 npm start
 ```
+
+### Force run on a non-business day
+
+By default the script will sleep until the next São Paulo business day if triggered on a weekend or holiday. To override this and run immediately regardless of the date:
+
+```bash
+FORCE_RUN=true npm start
+```
+
+Or set `FORCE_RUN=true` in your `.env` file.
 
 ### Run with Docker Compose (scheduled)
 

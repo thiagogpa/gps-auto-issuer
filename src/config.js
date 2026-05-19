@@ -41,6 +41,9 @@ const config = {
     // Dry run mode — skips final form submission
     dryRun: process.env.DRY_RUN === 'true',
 
+    // Force run — bypasses the business day guard
+    forceRun: process.env.FORCE_RUN === 'true',
+
     // Cron schedule (e.g. "0 8 16 * *" = 8:00 AM on the 16th monthly)
     cronSchedule: process.env.CRON_SCHEDULE || '',
 
