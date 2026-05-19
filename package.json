@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "debug": "DEBUG=true LOG_LEVEL=debug node src/index.js",
-    "test": "TZ=America/Sao_Paulo jest --verbose",
+    "test": "TZ=America/Sao_Paulo jest --verbose --reporters=default --reporters=jest-junit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."
@@ -30,6 +30,7 @@
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "jest": "^29.7.0",
+    "jest-junit": "^17.0.0",
     "prettier": "^3.2.5"
   }
 }
