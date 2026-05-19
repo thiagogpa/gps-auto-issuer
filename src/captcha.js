@@ -147,9 +147,6 @@ async function solveCaptcha(page, config, siteKey, pageUrl) {
                 logger.warn('Secondary challenge iframe not found. Skipping Tier 2.');
             }
         } catch (err) {
-            if (err.message.startsWith('AUDIO_BLOCKED')) {
-                throw new IpBlockedError('IP flagged by Google reCAPTCHA — CAPTCHA challenges are blocked for this IP. Manual intervention required.');
-            }
             logger.info(`FAIL: Tier 2 (Audio) failed. Reason: ${err.message}`);
         }
     } else if (!solved && !config.witAiToken) {

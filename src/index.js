@@ -23,7 +23,7 @@ const outputDir = path.join(process.cwd(), 'output');
 
 async function launchBrowser() {
     return puppeteer.launch({
-        headless: false,
+        headless: 'shell',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
