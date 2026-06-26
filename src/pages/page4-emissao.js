@@ -14,7 +14,20 @@ function todayStr() {
 
 /**
  * Page 4: Select checkbox, solve Page 4 CAPTCHA, click "Emitir GPS",
- * and capture the boleto PDF from the popup window.
+ * and capture the boleto PDF.
+ *
+ * Capture strategy: Chromium's `Browser.setDownloadBehavior` (with
+ * `eventsEnabled: true`) tells the browser to save downloads to `downloadPath`
+ * AND emit `Browser.downloadWillBegin` / `Browser.downloadProgress` events
+ * with the file's `guid`, `suggestedFilename`, and on-disk path once complete.
+ * We listen for the first PDF download after the Emitir GPS click, rename it
+ * to a deterministic path (`gps_<YYYY-MM-DD>.pdf`), and return that path.
+ *
+ * Why not capture the popup tab? RFB serves the boleto via a blob: URL in a
+ * new tab — `targetcreated` fires, but the page closes itself before
+ * Puppeteer's CDP session can fetch the bytes, so the 30s popup race
+ * consistently times out. The download-behavior path works because Chromium
+ * intercepts the blob save at a lower level.
  *
  * @returns {Promise<string|null>} Path to saved PDF, or null on failure
  */
@@ -26,49 +39,15 @@ async function navigatePage4(page, browser, config) {
         logger.debug(`Created output directory at: ${downloadPath}`);
     }
 
-    // Configure download behavior
-    const client = await page.target().createCDPSession();
-    await client.send('Page.setDownloadBehavior', {
+    // Configure browser-wide download behavior with CDP events enabled.
+    // This applies to every target (including popups) created from this point on.
+    const browserClient = await browser.target().createCDPSession();
+    await browserClient.send('Browser.setDownloadBehavior', {
         behavior: 'allow',
-        downloadPath: downloadPath
+        downloadPath: downloadPath,
+        eventsEnabled: true
     });
-
-    const targetCreatedListener = async target => {
-        if (target.type() === 'page') {
-            try {
-                const newPage = await target.page();
-                const newClient = await newPage.target().createCDPSession();
-                await newClient.send('Page.setDownloadBehavior', {
-                    behavior: 'allow',
-                    downloadPath: downloadPath
-                });
-                logger.debug('Configured download behavior for new tab.');
-            } catch (e) {
-                logger.warn('Error configuring new tab CDP session: ' + e.message);
-            }
-        }
-    };
-    browser.on('targetcreated', targetCreatedListener);
-
-    // Intercept PDF responses
-    const responseListener = async (response) => {
-        const contentType = response.headers()['content-type'] || '';
-        const contentDisposition = response.headers()['content-disposition'] || '';
-        if (contentType.includes('application/pdf') || (contentDisposition.includes('attachment') && contentDisposition.includes('.pdf'))) {
-            logger.debug('Detected PDF download response: ' + response.url());
-            try {
-                const buffer = await response.buffer();
-                const pdfOutPath = path.join(downloadPath, `gps_emitted_intercept_${Date.now()}.pdf`);
-                fs.writeFileSync(pdfOutPath, buffer);
-                logger.info('Saved intercepted PDF to ' + pdfOutPath);
-            } catch (e) {
-                logger.warn('Error saving intercepted PDF: ' + e.message);
-            }
-        }
-    };
-    page.on('response', responseListener);
-
-    logger.debug('Configured Puppeteer headless download settings.');
+    logger.debug('Configured browser-wide download behavior with CDP events.');
 
     logger.debug('Waiting for Page 4 components to fully load...');
     try {
@@ -121,14 +100,43 @@ async function navigatePage4(page, browser, config) {
         return null;
     }
 
-    // Set up popup listener BEFORE clicking
-    logger.debug('Setting up popup listener for GPS boleto window (before clicking Emitir GPS)...');
-    const boletoPdfPromise = new Promise(resolve => {
-        browser.once('targetcreated', async target => {
-            if (target.type() === 'page') {
-                resolve(await target.page());
+    // Set up PDF download listener BEFORE the second Emitir GPS click.
+    // Chromium emits Browser.downloadWillBegin as soon as it decides to save a
+    // download, then Browser.downloadProgress with state='completed' once the
+    // file is on disk. We race on downloadWillBegin (fast, reliable) and then
+    // wait for the matching completion event before reading the file.
+    logger.debug('Setting up CDP download listener for GPS boleto (before second click)...');
+    const boletoDownloadPromise = new Promise((resolve, reject) => {
+        const downloadGuidToSuggested = new Map();
+        const timeoutHandle = setTimeout(
+            () => reject(new Error('Timeout: no PDF download started within 60s')),
+            60000
+        );
+
+        const onWillBegin = (event) => {
+            const { guid, suggestedFilename } = event;
+            downloadGuidToSuggested.set(guid, suggestedFilename);
+            if (suggestedFilename && suggestedFilename.toLowerCase().endsWith('.pdf')) {
+                logger.info(`Detected PDF download: ${suggestedFilename} (guid=${guid})`);
+                clearTimeout(timeoutHandle);
+                // Detach willBegin; keep progress listener to await completion
+                browserClient.off('Browser.downloadWillBegin', onWillBegin);
+                resolve({ guid, suggestedFilename });
+            } else {
+                logger.debug(`Ignoring non-PDF download: ${suggestedFilename} (guid=${guid})`);
             }
-        });
+        };
+        const onProgress = (event) => {
+            if (event.state === 'completed') {
+                // The file is on disk; caller will read/rename it
+            } else if (event.state === 'canceled') {
+                // Don't reject here — only the matched guid matters, and we
+                // already filtered by .pdf extension in onWillBegin.
+            }
+        };
+
+        browserClient.on('Browser.downloadWillBegin', onWillBegin);
+        browserClient.on('Browser.downloadProgress', onProgress);
     });
 
     const isActuallyMissing = await page.evaluate(el => !el, emitirBtn);
@@ -217,45 +225,74 @@ async function navigatePage4(page, browser, config) {
         logger.debug('Clicked "Emitir GPS" button natively.');
     }
 
-    // Capture the boleto popup and download the PDF
-    logger.info('Waiting up to 30s for the GPS boleto popup to open...');
+    // Wait for Chromium to start (and finish) writing the PDF to disk.
+    logger.info('Waiting up to 60s for the GPS boleto PDF download...');
     let pdfPath = null;
     try {
-        const boletoPg = await Promise.race([
-            boletoPdfPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: GPS boleto popup did not open')), 30000))
-        ]);
+        const { suggestedFilename } = await boletoDownloadPromise;
 
-        logger.info('Boleto popup captured! URL: ' + boletoPg.url());
-        await delay(3000, 5000);
+        // Wait for the matching Browser.downloadProgress {state: 'completed'}.
+        // The file lands at <downloadPath>/<suggestedFilename> (or with a
+        // numeric suffix if a duplicate already exists). We poll the directory
+        // for any non-empty file matching the suggested name's prefix.
+        const completedPath = await waitForDownloadedFile(
+            downloadPath,
+            suggestedFilename,
+            45000
+        );
 
-        const blobUrl = boletoPg.url();
-        pdfPath = path.join(downloadPath, `gps_${todayStr()}.pdf`);
-
-        const pdfBase64 = await boletoPg.evaluate(async (url) => {
-            const res = await fetch(url);
-            const buf = await res.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-            return btoa(binary);
-        }, blobUrl);
-
-        fs.writeFileSync(pdfPath, Buffer.from(pdfBase64, 'base64'));
-        logger.info(`Saved GPS boleto PDF to ${pdfPath} successfully!`);
-
-        await saveDebug(boletoPg, 'page_boleto_popup.png', 'screenshot', config.debug);
-        await boletoPg.close();
+        // Rename to a deterministic path so downstream (Discord attach) finds it.
+        const finalPath = path.join(downloadPath, `gps_${todayStr()}.pdf`);
+        fs.renameSync(completedPath, finalPath);
+        pdfPath = finalPath;
+        logger.info(`Saved GPS boleto PDF to ${pdfPath}`);
     } catch (e) {
-        logger.warn(`Could not capture boleto popup: ${e.message}`);
-        await saveDebug(page, 'page5_fallback.png', 'screenshot', config.debug);
+        logger.warn(`Could not capture boleto PDF: ${e.message}`);
+        await saveDebug(page, 'page4_no_download.png', 'screenshot', config.debug);
     } finally {
-        page.off('response', responseListener);
-        browser.off('targetcreated', targetCreatedListener);
+        // CDP session auto-cleans with browser; nothing to detach explicitly.
     }
 
     logger.info(`Page 4 complete in ${Date.now() - start}ms`);
     return pdfPath;
+}
+
+/**
+ * Poll a directory for a file matching the suggested download name.
+ * Chromium may append a numeric suffix (e.g. `boleto.pdf` → `boleto (1).pdf`)
+ * if a previous run left a file with the same name.
+ *
+ * @param {string} dir
+ * @param {string} suggestedFilename
+ * @param {number} timeoutMs
+ * @returns {Promise<string>} Absolute path of the downloaded file
+ */
+async function waitForDownloadedFile(dir, suggestedFilename, timeoutMs) {
+    const baseName = path.parse(suggestedFilename).name.toLowerCase();
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const entries = fs.readdirSync(dir);
+        // Match the exact suggested name, OR any `<name> (N).pdf` variant,
+        // OR any other .pdf that's larger than 1KB (Chromium sometimes writes
+        // a temp file first and only renames at the very end).
+        const match = entries.find(name => {
+            const lower = name.toLowerCase();
+            if (!lower.endsWith('.pdf')) return false;
+            if (lower === suggestedFilename.toLowerCase()) return true;
+            if (lower.startsWith(baseName + ' (') && lower.endsWith('.pdf')) return true;
+            return false;
+        });
+        if (match) {
+            const fullPath = path.join(dir, match);
+            const stat = fs.statSync(fullPath);
+            // Skip .crdownload (in-progress) and zero-byte files
+            if (!match.endsWith('.crdownload') && stat.size > 1024) {
+                return fullPath;
+            }
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
+    throw new Error(`Downloaded PDF "${suggestedFilename}" not found in ${dir} within ${timeoutMs}ms`);
 }
 
 module.exports = navigatePage4;
