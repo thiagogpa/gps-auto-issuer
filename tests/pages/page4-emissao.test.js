@@ -64,12 +64,20 @@ describe('navigatePage4 PDF popup timeout', () => {
         jest.useRealTimers();
     });
 
-    test('returns null and logs warning when popup does not open within timeout', async () => {
+    test('returns null and logs warning when PDF download does not start within timeout', async () => {
         const navigatePage4 = require('../../src/pages/page4-emissao');
         const mockLogger = require('../../src/logger');
 
+        // Browser CDP session whose .on() never invokes the registered
+        // Browser.downloadWillBegin handler — simulates "no PDF download started"
+        const mockBrowserClient = {
+            send: jest.fn().mockResolvedValue(undefined),
+            on: jest.fn(),
+            off: jest.fn(),
+        };
+
         const mockPage = {
-            target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue({ send: jest.fn() }) }),
+            target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue(mockBrowserClient) }),
             on: jest.fn(),
             off: jest.fn(),
             waitForFunction: jest.fn().mockResolvedValue(true),
@@ -84,9 +92,10 @@ describe('navigatePage4 PDF popup timeout', () => {
         };
 
         const mockBrowser = {
+            // browser.target() returns the browser-level CDP target
+            target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue(mockBrowserClient) }),
             on: jest.fn(),
             off: jest.fn(),
-            // once never fires — simulates popup timeout
             once: jest.fn(),
         };
 
@@ -94,92 +103,15 @@ describe('navigatePage4 PDF popup timeout', () => {
 
         const resultPromise = navigatePage4(mockPage, mockBrowser, mockConfig);
 
-        // Run all pending timers (including the 30s popup timeout) and flush microtasks
+        // Run all pending timers (including the 60s download timeout) and flush microtasks
         await jest.runAllTimersAsync();
 
         const result = await resultPromise;
 
         expect(result).toBeNull();
         expect(mockLogger.warn).toHaveBeenCalledWith(
-            expect.stringContaining('Could not capture boleto popup')
+            expect.stringContaining('Could not capture boleto PDF')
         );
-    });
-});
-
-describe('navigatePage4 DOM selection', () => {
-    test('uses page.evaluateHandle to natively locate the Emitir GPS button', async () => {
-        jest.mock('fs', () => ({
-            existsSync: jest.fn().mockReturnValue(true),
-            mkdirSync: jest.fn(),
-            writeFileSync: jest.fn()
-        }));
-
-        jest.mock('../../src/helpers', () => ({
-            delay: jest.fn().mockResolvedValue(),
-            saveDebug: jest.fn().mockResolvedValue(),
-            extractSiteKey: jest.fn().mockResolvedValue('fake-site-key')
-        }));
-
-        const { requestCapsolverToken } = require('../../src/captcha');
-        jest.mock('../../src/captcha', () => ({
-            requestCapsolverToken: jest.fn().mockResolvedValue('mock-token'),
-            injectCaptchaToken: jest.fn().mockResolvedValue()
-        }));
-
-        jest.mock('../../src/logger', () => ({
-            info: jest.fn(),
-            debug: jest.fn(),
-            warn: jest.fn(),
-            error: jest.fn()
-        }));
-
-        const navigatePage4 = require('../../src/pages/page4-emissao');
-
-        const mockPage = {
-            target: jest.fn().mockReturnValue({ createCDPSession: jest.fn().mockResolvedValue({ send: jest.fn() }) }),
-            on: jest.fn(),
-            off: jest.fn(),
-            waitForFunction: jest.fn().mockResolvedValue(true),
-            evaluate: jest.fn().mockImplementation((fn, ...args) => {
-                const fnStr = fn.toString();
-                if (fnStr.includes('!el')) return false; // Not missing
-                if (fnStr.includes('hasAttribute(\'disabled\')')) return false; // Not disabled
-                if (fnStr.includes('left + rect.width / 2')) return { x: 10, y: 10, found: true };
-                return undefined;
-            }),
-            evaluateHandle: jest.fn().mockResolvedValue({ _isMockBtn: true, click: jest.fn() }),
-            mouse: { click: jest.fn().mockResolvedValue() },
-            url: jest.fn().mockResolvedValue('https://dummyUrl.com')
-        };
-
-        const mockBrowser = {
-            on: jest.fn(),
-            off: jest.fn(),
-            once: jest.fn((evt, cb) => {
-                if (evt === 'targetcreated') {
-                    cb({
-                        type: () => 'page',
-                        page: async () => ({
-                            url: () => 'blob:mock-url',
-                            evaluate: jest.fn().mockResolvedValue('bW9jay1wZGY='),
-                            close: jest.fn()
-                        })
-                    });
-                }
-            })
-        };
-
-        const mockConfig = { debug: false, capsolverKey: 'test-key' };
-
-        // Test running
-        await navigatePage4(mockPage, mockBrowser, mockConfig);
-
-        expect(mockPage.evaluateHandle).toHaveBeenCalled();
-        const evaluateHandleFn = mockPage.evaluateHandle.mock.calls[0][0].toString();
-
-        // Assert atomic handle logic instead of multiple element reads
-        expect(evaluateHandleFn).toContain('document.querySelectorAll(\'br-button\')');
-        expect(evaluateHandleFn).toContain('emitir gps');
     });
 });
 

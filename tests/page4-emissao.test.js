@@ -30,6 +30,15 @@ function makeMockPage() {
 
 function makeMockBrowser() {
     return {
+        // browser.target() returns the browser-level CDP target used to set
+        // Browser.setDownloadBehavior and listen for Browser.downloadWillBegin.
+        target: jest.fn().mockReturnValue({
+            createCDPSession: jest.fn().mockResolvedValue({
+                send: jest.fn().mockResolvedValue(undefined),
+                on: jest.fn(),
+                off: jest.fn(),
+            }),
+        }),
         on: jest.fn(),
         once: jest.fn(),
     };
