@@ -15,3 +15,9 @@ output/*
 !.github/renovate.json
 coverage/
 docs/
+junit.xml
+
+# Local AI agent tooling
+.agent/
+.agents/
+.claude/
