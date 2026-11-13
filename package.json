@@ -1,6 +1,6 @@
 {
   "name": "gps",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Automated GPS (Guia da Previdência Social) emission from the RFB website",
   "main": "src/index.js",
   "scripts": {
