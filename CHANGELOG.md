@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/thiagogpa/gps-auto-issuer/compare/v1.0.0...v1.0.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **page4:** capture boleto via Browser.downloadWillBegin event ([7801998](https://github.com/thiagogpa/gps-auto-issuer/commit/7801998d3b67b5c9d85cd816a55ef002b7d2f147))
+
 ## 1.0.0 (2026-05-19)
 
 
